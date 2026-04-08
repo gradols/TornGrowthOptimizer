@@ -2114,9 +2114,26 @@ export default function TornGrowthOptimizer() {
             {/* Cooldowns */}
             <SectionHeader icon="⏱️" title="Cooldowns" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
-              <StatCard icon="💊" title="Drogas" value={cooldowns.drug > 0 ? timeUntil(cooldowns.drug) : "✅ Listo"} color={cooldowns.drug > 0 ? T.red : T.green} />
-              <StatCard icon="🏥" title="Médico" value={cooldowns.medical > 0 ? timeUntil(cooldowns.medical) : "✅ Listo"} color={cooldowns.medical > 0 ? T.red : T.green} />
-              <StatCard icon="💪" title="Booster" value={cooldowns.booster > 0 ? timeUntil(cooldowns.booster) : "✅ Listo"} color={cooldowns.booster > 0 ? T.red : T.green} />
+                {[
+                { icon: "💊", title: "Drogas", time: cooldowns.drug, maxTime: 86400 },
+                { icon: "🏥", title: "Médico", time: cooldowns.medical, maxTime: 21600 },
+                { icon: "💪", title: "Booster", time: cooldowns.booster, maxTime: 86400 },
+              ].map(cd => {
+                const pctDone = cd.maxTime > 0 ? ((cd.maxTime - cd.time) / cd.maxTime) * 100 : 100;
+                return (
+                  <div key={cd.title} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 14, textAlign: "center" }}>
+                    <div style={{ fontSize: 20, marginBottom: 4 }}>{cd.icon}</div>
+                    <div style={{ fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>{cd.title}</div>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: cd.time > 0 ? T.red : T.green, margin: "4px 0" }}>
+                      {cd.time > 0 ? timeUntil(cd.time) : "✅ Listo"}
+                    </div>
+                    <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 4 }}>/ {timeUntil(cd.maxTime)}</div>
+                    <div style={{ height: 4, background: T.bg, borderRadius: 2, overflow: "hidden" }}>
+                      <div style={{ height: "100%", width: `${pctDone}%`, background: cd.time > 0 ? T.gold : T.green, borderRadius: 2, transition: "width 1s" }} />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             {/* Quick Strategy */}
