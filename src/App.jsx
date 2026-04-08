@@ -1501,22 +1501,15 @@ export default function TornGrowthOptimizer() {
     }
   }, [apiKey, fetchData]);
 
-  // Auto-refresh travel stock (every 2 min) + real prices (every 5 min)
+  // Auto-load stock on startup (YATA/DroqsDB are external, no Torn API cost)
+  // Prices are manual-only to avoid Torn API rate limits
   useEffect(() => {
     if (!apiKey) return;
-    // Load stock first, then prices (prices need YATA item IDs)
     fetchForeignStock();
-    const stockInterval = setInterval(fetchForeignStock, 2 * 60 * 1000);
-    const priceInterval = setInterval(fetchTravelRealPrices, 5 * 60 * 1000);
-    return () => { clearInterval(stockInterval); clearInterval(priceInterval); };
+    // Refresh stock every 5 min (external APIs, no rate limit issue)
+    const stockInterval = setInterval(fetchForeignStock, 5 * 60 * 1000);
+    return () => clearInterval(stockInterval);
   }, [apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Fetch real prices once YATA stock is available
-  useEffect(() => {
-    if (travelForeignStock && Object.keys(travelForeignStock).length > 0 && !travelLastPriceUpdate) {
-      fetchTravelRealPrices();
-    }
-  }, [travelForeignStock]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Request notification permission
   useEffect(() => {
@@ -2602,7 +2595,7 @@ export default function TornGrowthOptimizer() {
                   fontFamily: "inherit", color: travelPriceLoading ? T.textMuted : T.accent,
                 }}
               >
-                {travelPriceLoading ? "Escaneando precios..." : "Actualizar Precios Reales"}
+                {travelPriceLoading ? "Escaneando precios..." : travelLastPriceUpdate ? "Refrescar Precios" : "Escanear Precios (1 vez/día)"}
               </button>
               <button
                 onClick={fetchForeignStock}
@@ -2991,43 +2984,52 @@ export default function TornGrowthOptimizer() {
               </div>
             </div>
 
-            {/* ── Pro Strategy Guide ── */}
+            {/* ── Pro Strategy Guide (verified from Torn wiki + forums) ── */}
             <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: T.accent, marginBottom: 10 }}>Estrategia de Viajes Nivel 15+</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.accent, marginBottom: 10 }}>Guía de Viajes (fuentes: wiki.torn.com + foros)</div>
               <div style={{ fontSize: 12, color: T.textDim, lineHeight: 1.8 }}>
-                <span style={{ color: T.gold, fontWeight: 700 }}>PRIORIDAD MÁXIMA:</span><br />
-                • Viaja a la ruta con mejor $/hora (ranking arriba actualizado en tiempo real)<br />
-                • Llena TODOS tus slots de carga con los items más rentables<br />
-                • Compra siempre 1 Plushie + 1 Flower por viaje para Duke<br />
+                <span style={{ color: T.gold, fontWeight: 700 }}>QUÉ COMPRAR:</span><br />
+                • Plushies y Flowers son los items más rentables en casi todos los destinos<br />
+                • Colecciona sets completos (1 de cada plushie/flower) para el Museo → 10 Points por set (11 en Museum Day)<br />
+                • Argentina es un destino muy recomendado: Monkey Plushie + Ceibo Flower + Tear Gas, vuelo corto<br />
+                • Otros items rentables: armas temporales, drogas (Xanax en Sudáfrica/Canadá)<br />
                 <br />
-                <span style={{ color: T.accent, fontWeight: 700 }}>OPTIMIZACIÓN DE VELOCIDAD:</span><br />
-                • Business Class Ticket = 30% menos tiempo de vuelo<br />
-                • Airstrip de facción = 30% adicional de reducción<br />
-                • Combo Airstrip + Business = 51% reducción (casi la mitad del tiempo)<br />
-                • WLT (Working Lunch Ticket) = viaje instantáneo pero son caros<br />
+                <span style={{ color: T.accent, fontWeight: 700 }}>OPCIONES DE VUELO:</span><br />
+                • Standard: gratis, 5 items de capacidad base<br />
+                • Airstrip: Isla Privada + Airstrip + Piloto → 30% más rápido, 15 items, vuelo gratis<br />
+                • Private: 9M acciones de WLT stock → 50% más rápido, 15 items<br />
+                • Business Class Ticket: item consumible → 70% más rápido, 15 items<br />
                 <br />
-                <span style={{ color: T.green, fontWeight: 700 }}>CON CIENTOS DE MILLONES:</span><br />
-                • Invierte en First Class Tickets para máxima eficiencia<br />
-                • Compra WLT en bulk cuando estén baratos para viajes rápidos<br />
-                • Vende items en tu Bazaar, no en el Item Market (evitas 5% comisión)<br />
-                • Configura precios en Bazaar ligeramente por debajo del mercado para venta rápida<br />
-                • Combina viajes con misiones de Duke para doble beneficio (dinero + merits)<br />
+                <span style={{ color: T.green, fontWeight: 700 }}>AUMENTAR CAPACIDAD (máx 34 items sin eventos):</span><br />
+                • Base: 5 items (Standard) o 15 items (Airstrip/Private/Business)<br />
+                • Large Suitcase: +4 items (comprar en Hawaii o Item Market, $10M)<br />
+                • Excursion (perk de facción): +1 item por upgrade, máx +10<br />
+                • Job specials: Lingerie Store 3★ (+2), Cruise Line 3★/10★ (+2/+3)<br />
+                • Libro "Smuggling For Beginners": +10 items por 31 días<br />
+                • Tourism Day (27 sept): duplica capacidad<br />
                 <br />
-                <span style={{ color: T.purple, fontWeight: 700 }}>LINKS RÁPIDOS:</span><br />
-                <a href="https://www.torn.com/travelagency.php" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Travel Agency</a>
+                <span style={{ color: T.purple, fontWeight: 700 }}>DÓNDE VENDER:</span><br />
+                • Bazaar propio: sin comisión<br />
+                • Item Market: 3% comisión al listar<br />
+                • Traders directos: sin comisión, venta privada<br />
+                • Museo: sets completos de plushies/flowers → Points (necesitas Bachelor of History)<br />
+                <br />
+                <span style={{ color: T.textMuted, fontWeight: 700 }}>LINKS:</span><br />
+                <a href="https://www.torn.com/page.php?sid=travel" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Travel Agency</a>
                 {" | "}
                 <a href="https://www.torn.com/bazaar.php" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Mi Bazaar</a>
                 {" | "}
+                <a href="https://www.torn.com/museum.php" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Museo</a>
+                {" | "}
                 <a href="https://www.torn.com/page.php?sid=ItemMarket" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Item Market</a>
                 {" | "}
-                <a href="https://www.torn.com/page.php?sid=missions" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Duke Missions</a>
-                <br /><br />
-                <span style={{ color: T.purple, fontWeight: 700 }}>HERRAMIENTAS EXTERNAS:</span><br />
-                <a href="https://yata.yt/bazaar/abroad/" target="_blank" rel="noreferrer" style={{ color: T.accent }}>YATA Foreign Stock</a>
+                <a href="https://yata.yt/bazaar/abroad/" target="_blank" rel="noreferrer" style={{ color: T.accent }}>YATA Stock</a>
                 {" | "}
-                <a href="https://droqsdb.com/" target="_blank" rel="noreferrer" style={{ color: T.accent }}>DroqsDB (Stock + Restock)</a>
+                <a href="https://droqsdb.com/" target="_blank" rel="noreferrer" style={{ color: T.accent }}>DroqsDB</a>
                 {" | "}
-                <a href="https://tornstats.com/travel" target="_blank" rel="noreferrer" style={{ color: T.accent }}>TornStats Travel</a>
+                <a href="https://tornstats.com/travel" target="_blank" rel="noreferrer" style={{ color: T.accent }}>TornStats</a>
+                {" | "}
+                <a href="https://www.torntravel.com/" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Travel Planner</a>
               </div>
             </div>
           </>
