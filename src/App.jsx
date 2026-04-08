@@ -1679,11 +1679,13 @@ export default function TornGrowthOptimizer() {
       travelTimeLocalRef.current = Math.max(0, travelTimeLocalRef.current - 1);
       const t = travelTimeLocalRef.current;
 
-      // Show visual countdown when < 60s
+      // Show visual countdown when < 60s + flash tab title
       if (t <= 60 && t > 0) {
         setLandingCountdown(t);
-      } else {
+        document.title = t % 2 === 0 ? `🛬 ${t}s - ${travelDest}!` : `✈️ ATERRIZANDO ${t}s`;
+      } else if (t <= 0) {
         setLandingCountdown(null);
+        document.title = "TORN GROWTH";
       }
 
       // Alert at 60, 50, 40, 30, 20, 10 seconds
