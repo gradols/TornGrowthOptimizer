@@ -1257,6 +1257,12 @@ export default function TornGrowthOptimizer() {
           const sorted = [...listings].sort((a, b) => a.price - b.price);
           const cheapest = sorted[0].price;
 
+          // Share price data with travel section
+          setTravelRealPrices(prev => ({ ...prev, [id]: {
+            cheapest, qty: sorted[0].amount || 1,
+            avgBazaar: cheapest, totalListings: sorted.length,
+          }}));
+
           // Media ponderada de los primeros 15 listings (sin contar el más barato)
           const forAvg = sorted.slice(1, 16);
           let totalQty = 0, totalValue = 0;
@@ -1312,6 +1318,7 @@ export default function TornGrowthOptimizer() {
 
     marketResultsRef.current.sort((a, b) => b.discount - a.discount);
     setMarketDeals([...marketResultsRef.current]);
+    setTravelLastPriceUpdate(Date.now()); // Travel prices updated via market scan
     setScanProgress("");
   }, []);
 
