@@ -1383,20 +1383,30 @@ export default function TornGrowthOptimizer() {
     targetActiveRef.current = false;
   }, []);
 
-  // Auto-load items (but don't start scanning automatically)
+  // Auto-load items and start market scan automatically
+  const autoScanStartedRef = useRef(false);
   useEffect(() => {
     if (!apiKey) return;
-    const loadItems = async () => {
-      if (!allItems) {
+    const loadAndScan = async () => {
+      let items = allItems;
+      if (!items) {
         try {
           const res = await fetch(`${API_BASE}/torn/?selections=items&key=${apiKey}`);
           const json = await res.json();
-          if (json.items) setAllItems(json.items);
+          if (json.items) { items = json.items; setAllItems(json.items); }
         } catch {}
       }
+      // Auto-start scanner once on load
+      if (items && !autoScanStartedRef.current && !scanActiveRef.current) {
+        autoScanStartedRef.current = true;
+        scanActiveRef.current = true;
+        await scanAllMarkets(items, apiKey);
+        scanActiveRef.current = false;
+        setScanning(false);
+      }
     };
-    loadItems();
-  }, [apiKey]);
+    loadAndScan();
+  }, [apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Manual scan loop - only runs when user clicks Start
   const startMarketScan = useCallback(async () => {
