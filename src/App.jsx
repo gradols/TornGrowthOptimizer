@@ -654,7 +654,7 @@ const TICKET_TYPES = [
 ];
 
 // Calculate travel profits — uses YATA stock as primary source for items + costs
-const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, droqsData) => {
+const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, droqsData, restockData) => {
   const { ticketIndex, carrySlots, maxItemCost } = travelConfig;
   const ticketMod = TICKET_TYPES[ticketIndex]?.modifier ?? 1.0;
   const hasYata = foreignStock && Object.keys(foreignStock).length > 0;
@@ -693,9 +693,10 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, dro
       const sellAfterFee = Math.round(sellPrice * 0.95);
       const profit = sellAfterFee - abroadCost;
       const itemName = marketItem?.name || stockItem.name;
-      // DroqsDB restock data (null = in stock or no data)
-      const restockMin = (droqsItem?.estimatedRestockMinutes != null && droqsItem.estimatedRestockMinutes > 0)
-        ? droqsItem.estimatedRestockMinutes : null;
+      // DroqsDB restock data — check export first, then restocking-soon as fallback
+      const restockSoonItem = restockData?.[`${dest.destination}_${stockItem.id}`];
+      const rawRestock = droqsItem?.estimatedRestockMinutes ?? restockSoonItem?.estimatedRestockMinutes ?? null;
+      const restockMin = (rawRestock != null && rawRestock > 0) ? rawRestock : null;
       const droqsProfitPerMin = droqsItem?.profitPerMinute ?? null;
       const type = PLUSHIE_IDS.has(stockItem.id) ? "plushie"
         : FLOWER_IDS.has(stockItem.id) ? "flower" : "item";
@@ -1065,7 +1066,8 @@ export default function TornGrowthOptimizer() {
   const [landingCountdown, setLandingCountdown] = useState(null); // seconds left, null = not close
   const [travelRealPrices, setTravelRealPrices] = useState({}); // { itemId: { cheapest, qty, avgBazaar } }
   const [travelForeignStock, setTravelForeignStock] = useState(null); // YATA data { mex: { stocks: [...], update }, ... }
-  const [travelDroqsData, setTravelDroqsData] = useState(null); // DroqsDB data
+  const [travelDroqsData, setTravelDroqsData] = useState(null); // DroqsDB export data
+  const [travelRestockData, setTravelRestockData] = useState({}); // { "Argentina_256": { estimatedRestockMinutes: 26, ... } }
   const [travelPriceLoading, setTravelPriceLoading] = useState(false);
   const [travelStockLoading, setTravelStockLoading] = useState(false);
   const [travelLastPriceUpdate, setTravelLastPriceUpdate] = useState(null);
@@ -1510,27 +1512,16 @@ export default function TornGrowthOptimizer() {
       ]);
       if (droqsExportRes?.ok) {
         const droqsJson = await droqsExportRes.json();
-        // Merge restocking-soon data into export (overrides stale restock info)
-        if (droqsRestockRes?.ok) {
-          const restockJson = await droqsRestockRes.json();
-          const restockLookup = {};
-          for (const item of (restockJson.items || [])) {
-            const key = `${item.country}_${item.itemId}`;
-            restockLookup[key] = item;
-          }
-          // Patch export countries with fresh restock data
-          for (const country of (droqsJson.countries || [])) {
-            for (const item of (country.items || [])) {
-              const fresh = restockLookup[`${country.country}_${item.itemId}`];
-              if (fresh) {
-                item.stock = 0;
-                item.estimatedRestockMinutes = fresh.estimatedRestockMinutes;
-                item.estimatedRestockDisplay = fresh.estimatedRestockDisplay;
-              }
-            }
-          }
-        }
         setTravelDroqsData(droqsJson);
+      }
+      // Store restocking-soon data separately (never gets overwritten by export)
+      if (droqsRestockRes?.ok) {
+        const restockJson = await droqsRestockRes.json();
+        const lookup = {};
+        for (const item of (restockJson.items || [])) {
+          lookup[`${item.country}_${item.itemId}`] = item;
+        }
+        setTravelRestockData(lookup);
       }
       if (yataRes?.ok) {
         const yataJson = await yataRes.json();
@@ -1550,29 +1541,17 @@ export default function TornGrowthOptimizer() {
     }
   }, [apiKey, fetchData]);
 
-  // Refresh restock timers from DroqsDB (fast, small endpoint)
+  // Refresh restock timers from DroqsDB (fast, small endpoint, every 60s)
   const refreshRestockTimers = useCallback(async () => {
     try {
       const res = await fetch("https://droqsdb.com/api/public/v1/restocking-soon");
       if (!res.ok) return;
       const json = await res.json();
-      // Update DroqsDB data with fresh restock timers
-      setTravelDroqsData(prev => {
-        if (!prev?.countries) return prev;
-        const restockByKey = {};
-        for (const item of (json.items || [])) {
-          restockByKey[`${item.country}_${item.itemId}`] = item;
-        }
-        const updated = { ...prev, countries: prev.countries.map(c => ({
-          ...c,
-          items: (c.items || []).map(item => {
-            const fresh = restockByKey[`${c.country}_${item.itemId}`];
-            if (fresh) return { ...item, stock: 0, estimatedRestockMinutes: fresh.estimatedRestockMinutes, estimatedRestockDisplay: fresh.estimatedRestockDisplay };
-            return item;
-          }),
-        }))};
-        return updated;
-      });
+      const lookup = {};
+      for (const item of (json.items || [])) {
+        lookup[`${item.country}_${item.itemId}`] = item;
+      }
+      setTravelRestockData(lookup);
     } catch {}
   }, []);
 
@@ -2674,7 +2653,7 @@ export default function TornGrowthOptimizer() {
         {/* ═══ TRAVEL TAB (ULTRA-OPTIMIZED) ═══ */}
         {tab === "travel" && (() => {
           const travelConfig = { ticketIndex: travelTicket, carrySlots: travelSlots, maxItemCost: travelMaxCost };
-          const travelResults = calcTravelProfits(allItems, travelConfig, travelRealPrices, travelForeignStock, travelDroqsData);
+          const travelResults = calcTravelProfits(allItems, travelConfig, travelRealPrices, travelForeignStock, travelDroqsData, travelRestockData);
           const bestRoute = travelResults[0];
           const ticketInfo = TICKET_TYPES[travelTicket] || TICKET_TYPES[0];
 
