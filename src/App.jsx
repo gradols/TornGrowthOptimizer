@@ -687,7 +687,8 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, dro
       const avgBazaar = real?.avgBazaar || droqsItem?.bazaarPrice || sellPrice;
       const marketListings = real?.totalListings || 0;
       const abroadCost = droqsItem?.buyPrice || stockItem.cost;
-      const abroadStock = stockItem.quantity;
+      // Use DroqsDB stock if it says 0 (more recent than YATA for sellouts)
+      const abroadStock = (droqsItem && droqsItem.stock === 0) ? 0 : stockItem.quantity;
       // Subtract Item Market commission (5%)
       const sellAfterFee = Math.round(sellPrice * 0.95);
       const profit = sellAfterFee - abroadCost;
@@ -1497,25 +1498,45 @@ export default function TornGrowthOptimizer() {
     setTravelPriceLoading(false);
   }, [apiKey, travelRealPrices, travelForeignStock]);
 
-  // ─── TRAVEL: Fetch foreign stock from YATA ────────────────────────────
+  // ─── TRAVEL: Fetch foreign stock from YATA + DroqsDB ───────────────
   const fetchForeignStock = useCallback(async () => {
     setTravelStockLoading(true);
     try {
-      // Try DroqsDB first (better data, restock predictions)
-      const droqsRes = await fetch("https://droqsdb.com/api/public/v1/export");
-      if (droqsRes.ok) {
-        const droqsJson = await droqsRes.json();
+      // Fetch DroqsDB export + restocking-soon in parallel (external APIs, no Torn rate limit)
+      const [droqsExportRes, droqsRestockRes, yataRes] = await Promise.all([
+        fetch("https://droqsdb.com/api/public/v1/export").catch(() => null),
+        fetch("https://droqsdb.com/api/public/v1/restocking-soon").catch(() => null),
+        fetch("https://yata.yt/api/v1/travel/export/").catch(() => null),
+      ]);
+      if (droqsExportRes?.ok) {
+        const droqsJson = await droqsExportRes.json();
+        // Merge restocking-soon data into export (overrides stale restock info)
+        if (droqsRestockRes?.ok) {
+          const restockJson = await droqsRestockRes.json();
+          const restockLookup = {};
+          for (const item of (restockJson.items || [])) {
+            const key = `${item.country}_${item.itemId}`;
+            restockLookup[key] = item;
+          }
+          // Patch export countries with fresh restock data
+          for (const country of (droqsJson.countries || [])) {
+            for (const item of (country.items || [])) {
+              const fresh = restockLookup[`${country.country}_${item.itemId}`];
+              if (fresh) {
+                item.stock = 0;
+                item.estimatedRestockMinutes = fresh.estimatedRestockMinutes;
+                item.estimatedRestockDisplay = fresh.estimatedRestockDisplay;
+              }
+            }
+          }
+        }
         setTravelDroqsData(droqsJson);
       }
-    } catch (e) { console.error("DroqsDB fetch error:", e); }
-    try {
-      // Also fetch YATA as fallback/complement
-      const yataRes = await fetch("https://yata.yt/api/v1/travel/export/");
-      if (yataRes.ok) {
+      if (yataRes?.ok) {
         const yataJson = await yataRes.json();
         setTravelForeignStock(yataJson.stocks || null);
       }
-    } catch (e) { console.error("YATA fetch error:", e); }
+    } catch (e) { console.error("Stock fetch error:", e); }
     setTravelStockLoading(false);
     setTravelLastStockUpdate(Date.now());
   }, []);
