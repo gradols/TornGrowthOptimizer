@@ -667,8 +667,9 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock) => 
     const allDestItems = yataStock.map(stockItem => {
       const marketItem = allItems?.[stockItem.id];
       const real = realPrices?.[stockItem.id];
-      const sellPrice = real?.cheapest || marketItem?.market_value || 0;
-      const priceSource = real?.cheapest ? "market" : "estimate";
+      // Only use real market prices — market_value is unreliable for profit calculations
+      const sellPrice = real?.cheapest || 0;
+      const priceSource = real?.cheapest ? "market" : "no_data";
       const avgBazaar = real?.avgBazaar || sellPrice;
       const marketListings = real?.totalListings || 0;
       const abroadCost = stockItem.cost;
@@ -2575,13 +2576,21 @@ export default function TornGrowthOptimizer() {
               </div>
             )}
 
-            {/* ── No YATA data warning ── */}
+            {/* ── Data warnings ── */}
             {(!travelForeignStock || Object.keys(travelForeignStock).length === 0) && !travelStockLoading && (
               <div style={{ background: T.card, border: `1px solid ${T.gold}44`, borderRadius: 12, padding: 16, marginBottom: 16, textAlign: "center" }}>
-                <div style={{ fontSize: 13, color: T.gold, fontWeight: 600, marginBottom: 4 }}>Cargando datos de stock...</div>
+                <div style={{ fontSize: 13, color: T.gold, fontWeight: 600, marginBottom: 4 }}>Sin datos de stock</div>
                 <div style={{ fontSize: 11, color: T.textDim }}>
                   Pulsa "Actualizar Stock Extranjero" para cargar items reales de YATA + DroqsDB.
-                  Sin estos datos no se pueden calcular rutas.
+                </div>
+              </div>
+            )}
+            {travelForeignStock && Object.keys(travelForeignStock).length > 0 && !travelLastPriceUpdate && !travelPriceLoading && (
+              <div style={{ background: T.card, border: `1px solid ${T.gold}44`, borderRadius: 12, padding: 16, marginBottom: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 13, color: T.gold, fontWeight: 600, marginBottom: 4 }}>Esperando precios reales del mercado...</div>
+                <div style={{ fontSize: 11, color: T.textDim }}>
+                  Los beneficios se calculan SOLO con precios reales del Item Market (no estimaciones).
+                  Pulsa "Actualizar Precios Reales" o espera a que carguen automáticamente.
                 </div>
               </div>
             )}
