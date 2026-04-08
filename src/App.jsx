@@ -1419,23 +1419,28 @@ export default function TornGrowthOptimizer() {
 
   // ─── TRAVEL: Fetch real market prices for travel items ──────────────────
   const fetchTravelRealPrices = useCallback(async () => {
-    if (!apiKey) return;
+    if (!apiKey || !travelForeignStock) return;
     setTravelPriceLoading(true);
     try {
-      // Collect all unique item IDs from YATA foreign stock data
-      const itemIds = [];
-      if (travelForeignStock) {
-        Object.values(travelForeignStock).forEach(country => {
-          (country.stocks || []).forEach(s => itemIds.push(s.id));
+      // Only scan top items per country (highest market_value) to keep it fast
+      const itemIds = new Set();
+      Object.values(travelForeignStock).forEach(country => {
+        const stocks = country.stocks || [];
+        // Pick top 5 most expensive items per country (by abroad cost as proxy)
+        const sorted = [...stocks].sort((a, b) => b.cost - a.cost);
+        sorted.slice(0, 5).forEach(s => itemIds.add(s.id));
+        // Always include plushies and flowers
+        stocks.forEach(s => {
+          if (PLUSHIE_IDS.has(s.id) || FLOWER_IDS.has(s.id)) itemIds.add(s.id);
         });
-      }
-      const uniqueIds = [...new Set(itemIds)];
-      if (uniqueIds.length === 0) return; // No YATA data yet, skip
+      });
+      const uniqueIds = [...itemIds];
+      if (uniqueIds.length === 0) return;
 
       const prices = { ...travelRealPrices };
-      // Fetch in batches of 3 to avoid rate limiting
-      for (let i = 0; i < uniqueIds.length; i += 3) {
-        const batch = uniqueIds.slice(i, i + 3);
+      // Fetch in batches of 5
+      for (let i = 0; i < uniqueIds.length; i += 5) {
+        const batch = uniqueIds.slice(i, i + 5);
         const results = await Promise.all(
           batch.map(async (id) => {
             try {
@@ -1446,7 +1451,6 @@ export default function TornGrowthOptimizer() {
               if (listings.length === 0) return { id, cheapest: 0, qty: 0 };
               const cheapest = listings[0]?.price ?? 0;
               const cheapQty = listings.filter(l => l.price === cheapest).reduce((s, l) => s + (l.quantity || 1), 0);
-              // Avg from top 10 listings for bazaar estimate
               const top10 = listings.slice(0, 10);
               const avgBazaar = top10.length > 0 ? Math.round(top10.reduce((s, l) => s + l.price, 0) / top10.length) : cheapest;
               return { id, cheapest, qty: cheapQty, avgBazaar, totalListings: listings.length };
@@ -1456,8 +1460,7 @@ export default function TornGrowthOptimizer() {
         results.forEach(r => {
           if (!r.error) prices[r.id] = { cheapest: r.cheapest, qty: r.qty, avgBazaar: r.avgBazaar, totalListings: r.totalListings };
         });
-        // Small delay between batches to respect rate limits
-        if (i + 3 < uniqueIds.length) await new Promise(r => setTimeout(r, 1500));
+        if (i + 5 < uniqueIds.length) await new Promise(r => setTimeout(r, 1200));
       }
       setTravelRealPrices(prices);
       setTravelLastPriceUpdate(Date.now());
@@ -2549,7 +2552,16 @@ export default function TornGrowthOptimizer() {
 
           return (
           <>
-            <SectionHeader icon="✈️" title="Centro de Viajes" badge="ULTRA PROFIT" />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <SectionHeader icon="✈️" title="Centro de Viajes" badge="ULTRA PROFIT" />
+              <a href="https://www.torn.com/page.php?sid=travel" target="_blank" rel="noreferrer"
+                style={{
+                  padding: "8px 16px", background: T.green, borderRadius: 8, textDecoration: "none",
+                  color: T.bg, fontSize: 12, fontWeight: 700, whiteSpace: "nowrap",
+                }}>
+                VIAJAR YA
+              </a>
+            </div>
 
             {/* ── Price & Stock Refresh Bar ── */}
             <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
