@@ -667,9 +667,9 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock) => 
     const allDestItems = yataStock.map(stockItem => {
       const marketItem = allItems?.[stockItem.id];
       const real = realPrices?.[stockItem.id];
-      // Only use real market prices — market_value is unreliable for profit calculations
-      const sellPrice = real?.cheapest || 0;
-      const priceSource = real?.cheapest ? "market" : "no_data";
+      // Use real scan price if available, otherwise market_value estimate
+      const sellPrice = real?.cheapest || marketItem?.market_value || 0;
+      const priceSource = real?.cheapest ? "market" : sellPrice > 0 ? "estimate" : "no_data";
       const avgBazaar = real?.avgBazaar || sellPrice;
       const marketListings = real?.totalListings || 0;
       const abroadCost = stockItem.cost;
@@ -2691,12 +2691,8 @@ export default function TornGrowthOptimizer() {
               </div>
             )}
             {travelForeignStock && Object.keys(travelForeignStock).length > 0 && !travelLastPriceUpdate && !travelPriceLoading && (
-              <div style={{ background: T.card, border: `1px solid ${T.gold}44`, borderRadius: 12, padding: 16, marginBottom: 16, textAlign: "center" }}>
-                <div style={{ fontSize: 13, color: T.gold, fontWeight: 600, marginBottom: 4 }}>Esperando precios reales del mercado...</div>
-                <div style={{ fontSize: 11, color: T.textDim }}>
-                  Los beneficios se calculan SOLO con precios reales del Item Market (no estimaciones).
-                  Pulsa "Actualizar Precios Reales" o espera a que carguen automáticamente.
-                </div>
+              <div style={{ background: T.card, border: `1px solid ${T.accent}33`, borderRadius: 8, padding: 10, marginBottom: 12, textAlign: "center", fontSize: 10, color: T.textDim }}>
+                Precios basados en market_value (estimación). Pulsa "Escanear Precios" para precios exactos del Item Market.
               </div>
             )}
 
