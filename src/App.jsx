@@ -655,7 +655,7 @@ const TICKET_TYPES = [
 
 // Calculate travel profits — uses YATA stock as primary source for items + costs
 const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock) => {
-  const { ticketIndex, carrySlots } = travelConfig;
+  const { ticketIndex, carrySlots, maxItemCost } = travelConfig;
   const ticketMod = TICKET_TYPES[ticketIndex]?.modifier ?? 1.0;
   const hasYata = foreignStock && Object.keys(foreignStock).length > 0;
 
@@ -674,20 +674,25 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock) => 
       const marketListings = real?.totalListings || 0;
       const abroadCost = stockItem.cost;
       const abroadStock = stockItem.quantity;
-      const profit = sellPrice - abroadCost;
+      // Subtract Item Market commission (5%)
+      const sellAfterFee = Math.round(sellPrice * 0.95);
+      const profit = sellAfterFee - abroadCost;
       const itemName = marketItem?.name || stockItem.name;
       const type = PLUSHIE_IDS.has(stockItem.id) ? "plushie"
         : FLOWER_IDS.has(stockItem.id) ? "flower" : "item";
 
       return {
         id: stockItem.id, name: stockItem.name, marketName: itemName,
-        type, sellPrice, profit, priceSource, avgBazaar, marketListings,
+        type, sellPrice, sellAfterFee, profit, priceSource, avgBazaar, marketListings,
         abroadStock, abroadCost, yataUpdate,
       };
     }).sort((a, b) => b.profit - a.profit);
 
-    // Best combo: fill carry slots allowing multiples, respecting stock limits
-    const inStockItems = allDestItems.filter(it => it.abroadStock > 0 && it.profit > 0);
+    // Best combo: fill carry slots allowing multiples, respecting stock + budget limits
+    const inStockItems = allDestItems.filter(it =>
+      it.abroadStock > 0 && it.profit > 0 &&
+      (maxItemCost === 0 || it.abroadCost <= maxItemCost)
+    );
     const bestCombo = [];
     const stockUsed = {};
     let slotsLeft = carrySlots;
@@ -1033,6 +1038,7 @@ export default function TornGrowthOptimizer() {
     return 0;
   });
   const [travelShowAllItems, setTravelShowAllItems] = useState(false);
+  const [travelMaxCost, setTravelMaxCost] = useState(() => parseInt(localStorage.getItem("torn_travel_maxcost") || "50000", 10));
   const [landingCountdown, setLandingCountdown] = useState(null); // seconds left, null = not close
   const [travelRealPrices, setTravelRealPrices] = useState({}); // { itemId: { cheapest, qty, avgBazaar } }
   const [travelForeignStock, setTravelForeignStock] = useState(null); // YATA data { mex: { stocks: [...], update }, ... }
@@ -2589,7 +2595,7 @@ export default function TornGrowthOptimizer() {
 
         {/* ═══ TRAVEL TAB (ULTRA-OPTIMIZED) ═══ */}
         {tab === "travel" && (() => {
-          const travelConfig = { ticketIndex: travelTicket, carrySlots: travelSlots };
+          const travelConfig = { ticketIndex: travelTicket, carrySlots: travelSlots, maxItemCost: travelMaxCost };
           const travelResults = calcTravelProfits(allItems, travelConfig, travelRealPrices, travelForeignStock);
           const bestRoute = travelResults[0];
           const ticketInfo = TICKET_TYPES[travelTicket] || TICKET_TYPES[0];
@@ -2788,6 +2794,31 @@ export default function TornGrowthOptimizer() {
             {/* ── Travel Config Panel ── */}
             <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
               <div style={{ fontSize: 13, fontWeight: 600, color: T.accent, marginBottom: 12 }}>Configuración de Viaje</div>
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Coste máximo por item (filtra armas caras)</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[
+                    { label: "Sin límite", value: 0 },
+                    { label: "$10K", value: 10000 },
+                    { label: "$50K", value: 50000 },
+                    { label: "$100K", value: 100000 },
+                    { label: "$500K", value: 500000 },
+                    { label: "$1M", value: 1000000 },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { setTravelMaxCost(opt.value); localStorage.setItem("torn_travel_maxcost", opt.value); }}
+                      style={{
+                        padding: "6px 10px",
+                        background: travelMaxCost === opt.value ? T.accent : T.bg,
+                        border: `1px solid ${travelMaxCost === opt.value ? T.accent : T.border}`,
+                        borderRadius: 6, fontSize: 11, fontWeight: travelMaxCost === opt.value ? 700 : 400,
+                        color: travelMaxCost === opt.value ? T.bg : T.textDim, cursor: "pointer", fontFamily: "inherit",
+                      }}
+                    >{opt.label}</button>
+                  ))}
+                </div>
+              </div>
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
                 <div>
                   <div style={{ fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Tipo de Ticket</div>
