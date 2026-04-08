@@ -2115,11 +2115,12 @@ export default function TornGrowthOptimizer() {
             <SectionHeader icon="⏱️" title="Cooldowns" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
                 {[
-                { icon: "💊", title: "Drogas", time: cooldowns.drug, maxTime: 86400 },
+                { icon: "💊", title: "Drogas", time: cooldowns.drug, maxTime: 0 },
                 { icon: "🏥", title: "Médico", time: cooldowns.medical, maxTime: 21600 },
                 { icon: "💪", title: "Booster", time: cooldowns.booster, maxTime: 86400 },
               ].map(cd => {
-                const pctDone = cd.maxTime > 0 ? ((cd.maxTime - cd.time) / cd.maxTime) * 100 : 100;
+                const hasMax = cd.maxTime > 0;
+                const pctDone = hasMax ? ((cd.maxTime - cd.time) / cd.maxTime) * 100 : 0;
                 return (
                   <div key={cd.title} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 14, textAlign: "center" }}>
                     <div style={{ fontSize: 20, marginBottom: 4 }}>{cd.icon}</div>
@@ -2127,10 +2128,14 @@ export default function TornGrowthOptimizer() {
                     <div style={{ fontSize: 16, fontWeight: 800, color: cd.time > 0 ? T.red : T.green, margin: "4px 0" }}>
                       {cd.time > 0 ? timeUntil(cd.time) : "✅ Listo"}
                     </div>
-                    <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 4 }}>/ {timeUntil(cd.maxTime)}</div>
-                    <div style={{ height: 4, background: T.bg, borderRadius: 2, overflow: "hidden" }}>
-                      <div style={{ height: "100%", width: `${pctDone}%`, background: cd.time > 0 ? T.gold : T.green, borderRadius: 2, transition: "width 1s" }} />
-                    </div>
+                    {hasMax && (
+                      <>
+                        <div style={{ fontSize: 10, color: T.textMuted, marginBottom: 4 }}>/ {timeUntil(cd.maxTime)}</div>
+                        <div style={{ height: 4, background: T.bg, borderRadius: 2, overflow: "hidden" }}>
+                          <div style={{ height: "100%", width: `${pctDone}%`, background: cd.time > 0 ? T.gold : T.green, borderRadius: 2, transition: "width 1s" }} />
+                        </div>
+                      </>
+                    )}
                   </div>
                 );
               })}
