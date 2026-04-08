@@ -1742,8 +1742,8 @@ export default function TornGrowthOptimizer() {
       travelTimeLocalRef.current = Math.max(0, travelTimeLocalRef.current - 1);
       const t = travelTimeLocalRef.current;
 
-      // Show visual countdown when < 60s + flash tab title
-      if (t <= 60 && t > 0) {
+      // Show visual countdown when < 120s + flash tab title
+      if (t <= 120 && t > 0) {
         setLandingCountdown(t);
         document.title = t % 2 === 0 ? `🛬 ${t}s - ${travelDest}!` : `✈️ ATERRIZANDO ${t}s`;
       } else if (t <= 0) {
@@ -1751,8 +1751,8 @@ export default function TornGrowthOptimizer() {
         document.title = "TORN GROWTH";
       }
 
-      // Alert at 60, 50, 40, 30, 20, 10 seconds
-      const alertTimes = [60, 50, 40, 30, 20, 10];
+      // Alert at 120, 90, 60, 45, 30, 15, 10, 5 seconds
+      const alertTimes = [120, 90, 60, 45, 30, 15, 10, 5];
       for (const at of alertTimes) {
         if (t === at && !landingAlertedRef.current.has(at)) {
           landingAlertedRef.current.add(at);
