@@ -644,15 +644,13 @@ const TRAVEL_DESTINATIONS = [
 const PLUSHIE_IDS = new Set([258, 618, 261, 266, 268, 269, 273, 274, 281, 384, 281]);
 const FLOWER_IDS = new Set([260, 617, 263, 264, 267, 271, 272, 276, 277, 282, 385]);
 
-// Travel time modifiers
+// Travel time modifiers (4 real options from the game)
+// Source: wiki.torn.com/wiki/Travel + torntravel.com/handbook/capacity
 const TICKET_TYPES = [
-  { label: "Standard", modifier: 1.0, icon: "🎫" },
-  { label: "Business Class", modifier: 0.7, icon: "💼" },
-  { label: "First Class", modifier: 0.5, icon: "👑" },
-  { label: "Airstrip + Standard", modifier: 0.7, icon: "🛩️" },
-  { label: "Airstrip + Business", modifier: 0.49, icon: "🛩️💼" },
-  { label: "Airstrip + First", modifier: 0.35, icon: "🛩️👑" },
-  { label: "WLT (Private)", modifier: 0.0, icon: "⚡" },
+  { label: "Standard", modifier: 1.0, icon: "🎫", capacity: 5, desc: "Gratis, sin requisitos" },
+  { label: "Airstrip", modifier: 0.7, icon: "🛩️", capacity: 15, desc: "Isla Privada + Airstrip + Piloto (30% más rápido)" },
+  { label: "Private", modifier: 0.5, icon: "⚡", capacity: 15, desc: "9M acciones WLT stock (50% más rápido)" },
+  { label: "Business", modifier: 0.3, icon: "💼", capacity: 15, desc: "Business Class Ticket consumible (70% más rápido)" },
 ];
 
 // Calculate travel profits — uses YATA stock as primary source for items + costs
@@ -706,7 +704,7 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock) => 
     const totalProfit = totalRevenue - totalInvestment;
 
     // Round trip time
-    const roundTripMin = Math.ceil(dest.flightTime * 2 * ticketMod);
+    const roundTripMin = Math.max(1, Math.ceil(dest.flightTime * 2 * ticketMod));
     const roundTripHours = roundTripMin / 60;
     const profitPerHour = roundTripHours > 0 ? Math.round(totalProfit / roundTripHours) : 0;
     const profitPerMin = roundTripMin > 0 ? Math.round(totalProfit / roundTripMin) : 0;
@@ -2702,6 +2700,10 @@ export default function TornGrowthOptimizer() {
                       const v = parseInt(e.target.value, 10);
                       setTravelTicket(v);
                       localStorage.setItem("torn_travel_ticket", v);
+                      // Auto-set capacity based on ticket type
+                      const cap = TICKET_TYPES[v]?.capacity || 5;
+                      setTravelSlots(cap);
+                      localStorage.setItem("torn_travel_slots", cap);
                     }}
                     style={{
                       width: "100%", padding: "8px 10px", background: T.bg, border: `1px solid ${T.border}`,
@@ -2709,7 +2711,7 @@ export default function TornGrowthOptimizer() {
                     }}
                   >
                     {TICKET_TYPES.map((tt, i) => (
-                      <option key={i} value={i}>{tt.icon} {tt.label} ({Math.round((1 - tt.modifier) * 100)}% reducción)</option>
+                      <option key={i} value={i}>{tt.icon} {tt.label} — {tt.capacity} items — {tt.desc}</option>
                     ))}
                   </select>
                 </div>
