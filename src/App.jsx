@@ -1033,6 +1033,7 @@ export default function TornGrowthOptimizer() {
     return 0;
   });
   const [travelShowAllItems, setTravelShowAllItems] = useState(false);
+  const [landingCountdown, setLandingCountdown] = useState(null); // seconds left, null = not close
   const [travelRealPrices, setTravelRealPrices] = useState({}); // { itemId: { cheapest, qty, avgBazaar } }
   const [travelForeignStock, setTravelForeignStock] = useState(null); // YATA data { mex: { stocks: [...], update }, ... }
   const [travelDroqsData, setTravelDroqsData] = useState(null); // DroqsDB data
@@ -1422,14 +1423,12 @@ export default function TornGrowthOptimizer() {
     if (!apiKey || !travelForeignStock) return;
     setTravelPriceLoading(true);
     try {
-      // Only scan top items per country (highest market_value) to keep it fast
+      // Only scan top 3 most expensive items per country + plushies/flowers
       const itemIds = new Set();
       Object.values(travelForeignStock).forEach(country => {
         const stocks = country.stocks || [];
-        // Pick top 5 most expensive items per country (by abroad cost as proxy)
         const sorted = [...stocks].sort((a, b) => b.cost - a.cost);
-        sorted.slice(0, 5).forEach(s => itemIds.add(s.id));
-        // Always include plushies and flowers
+        sorted.slice(0, 3).forEach(s => itemIds.add(s.id));
         stocks.forEach(s => {
           if (PLUSHIE_IDS.has(s.id) || FLOWER_IDS.has(s.id)) itemIds.add(s.id);
         });
@@ -1438,29 +1437,31 @@ export default function TornGrowthOptimizer() {
       if (uniqueIds.length === 0) return;
 
       const prices = { ...travelRealPrices };
-      // Fetch in batches of 5
-      for (let i = 0; i < uniqueIds.length; i += 5) {
-        const batch = uniqueIds.slice(i, i + 5);
-        const results = await Promise.all(
-          batch.map(async (id) => {
-            try {
-              const res = await fetch(`${API_BASE}/v2/market/${id}/itemmarket?key=${apiKey}`);
-              const json = await res.json();
-              if (json.error) return { id, error: true };
-              const listings = json.itemmarket || [];
-              if (listings.length === 0) return { id, cheapest: 0, qty: 0 };
+      // Fetch ONE at a time with 2s delay to avoid rate limiting
+      for (let i = 0; i < uniqueIds.length; i++) {
+        const id = uniqueIds[i];
+        try {
+          const res = await fetch(`${API_BASE}/v2/market/${id}/itemmarket?key=${apiKey}`);
+          const json = await res.json();
+          if (json.error?.code === 5) {
+            // Rate limited — wait 10s and retry
+            await new Promise(r => setTimeout(r, 10000));
+            continue;
+          }
+          if (!json.error) {
+            const listings = json.itemmarket || [];
+            if (listings.length > 0) {
               const cheapest = listings[0]?.price ?? 0;
               const cheapQty = listings.filter(l => l.price === cheapest).reduce((s, l) => s + (l.quantity || 1), 0);
               const top10 = listings.slice(0, 10);
               const avgBazaar = top10.length > 0 ? Math.round(top10.reduce((s, l) => s + l.price, 0) / top10.length) : cheapest;
-              return { id, cheapest, qty: cheapQty, avgBazaar, totalListings: listings.length };
-            } catch { return { id, error: true }; }
-          })
-        );
-        results.forEach(r => {
-          if (!r.error) prices[r.id] = { cheapest: r.cheapest, qty: r.qty, avgBazaar: r.avgBazaar, totalListings: r.totalListings };
-        });
-        if (i + 5 < uniqueIds.length) await new Promise(r => setTimeout(r, 1200));
+              prices[id] = { cheapest, qty: cheapQty, avgBazaar, totalListings: listings.length };
+            }
+          }
+        } catch {}
+        // Update state progressively so user sees results appearing
+        if (i % 5 === 4) setTravelRealPrices({ ...prices });
+        if (i < uniqueIds.length - 1) await new Promise(r => setTimeout(r, 2000));
       }
       setTravelRealPrices(prices);
       setTravelLastPriceUpdate(Date.now());
@@ -1654,36 +1655,62 @@ export default function TornGrowthOptimizer() {
   const travelDest = data?.travel?.destination || "";
   const travelTime = data?.travel?.time_left ?? 0;
 
+  // Auto-count trips: detect when traveling goes from true → false (landed)
+  const wasTravelingRef = useRef(false);
+  useEffect(() => {
+    if (wasTravelingRef.current && !traveling) {
+      // Just landed! Auto-increment trip counter
+      const newTrips = travelTripsToday + 1;
+      setTravelTripsToday(newTrips);
+      localStorage.setItem("torn_travel_trips", JSON.stringify({ date: new Date().toDateString(), count: newTrips }));
+    }
+    wasTravelingRef.current = traveling;
+  }, [traveling]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Landing alert: 6 alerts every 10s when < 60s remaining
   const landingAlertedRef = useRef(new Set());
   const travelTimeLocalRef = useRef(0);
   useEffect(() => {
-    travelTimeLocalRef.current = travelTime;
+    if (travelTime > 0) travelTimeLocalRef.current = travelTime;
     if (!traveling) {
       landingAlertedRef.current.clear();
       travelTimeLocalRef.current = 0;
+      setLandingCountdown(null);
     }
   }, [travelTime, traveling]);
 
+  // Internal 1-second countdown — NO API calls, just a local timer
   useEffect(() => {
-    if (!traveling || typeof Notification === "undefined") return;
+    if (!traveling) return;
     const interval = setInterval(() => {
       travelTimeLocalRef.current = Math.max(0, travelTimeLocalRef.current - 1);
       const t = travelTimeLocalRef.current;
+
+      // Show visual countdown when < 60s
+      if (t <= 60 && t > 0) {
+        setLandingCountdown(t);
+      } else {
+        setLandingCountdown(null);
+      }
+
+      // Alert at 60, 50, 40, 30, 20, 10 seconds
       const alertTimes = [60, 50, 40, 30, 20, 10];
       for (const at of alertTimes) {
-        if (t <= at && t > at - 1 && !landingAlertedRef.current.has(at)) {
+        if (t === at && !landingAlertedRef.current.has(at)) {
           landingAlertedRef.current.add(at);
-          playAlert();
-          if (Notification.permission === "granted") {
+          try { playAlert(); } catch {}
+          if (typeof Notification !== "undefined" && Notification.permission === "granted") {
             new Notification(`✈️ ¡Aterrizando en ${at}s!`, {
-              body: `Llegas a ${travelDest} en ${at} segundos — prepárate para comprar`,
-              tag: `torn-landing-${at}`,
+              body: `Llegas a ${travelDest} en ${at} segundos`,
+              tag: "torn-landing",
             });
           }
         }
       }
-      if (t <= 0) clearInterval(interval);
+      if (t <= 0) {
+        setLandingCountdown(null);
+        clearInterval(interval);
+      }
     }, 1000);
     return () => clearInterval(interval);
   }, [traveling, travelDest]);
@@ -2615,11 +2642,25 @@ export default function TornGrowthOptimizer() {
 
             {/* ── Flying Status ── */}
             {traveling && (
-              <div style={{ background: `linear-gradient(135deg, ${T.purpleDim}, ${T.card})`, border: `1px solid ${T.purple}66`, borderRadius: 12, padding: 20, marginBottom: 16, textAlign: "center" }}>
-                <div style={{ fontSize: 32, marginBottom: 4 }}>✈️</div>
-                <div style={{ fontSize: 18, fontWeight: 700, color: T.purple }}>En vuelo a {travelDest}</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: T.text, margin: "8px 0" }}>{timeUntil(travelTime)}</div>
-                <div style={{ fontSize: 11, color: T.textDim }}>Recuerda comprar los items más rentables al llegar</div>
+              <div style={{
+                background: landingCountdown
+                  ? `linear-gradient(135deg, ${T.greenDim}, ${T.card})`
+                  : `linear-gradient(135deg, ${T.purpleDim}, ${T.card})`,
+                border: `1px solid ${landingCountdown ? T.green : T.purple}66`,
+                borderRadius: 12, padding: 20, marginBottom: 16, textAlign: "center",
+                animation: landingCountdown ? "pulse 1s infinite" : "none",
+              }}>
+                <style>{`@keyframes pulse { 0%,100% { opacity:1 } 50% { opacity:0.7 } }`}</style>
+                <div style={{ fontSize: 32, marginBottom: 4 }}>{landingCountdown ? "🛬" : "✈️"}</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: landingCountdown ? T.green : T.purple }}>
+                  {landingCountdown ? `¡ATERRIZANDO en ${travelDest}!` : `En vuelo a ${travelDest}`}
+                </div>
+                <div style={{ fontSize: landingCountdown ? 36 : 28, fontWeight: 800, color: landingCountdown ? T.green : T.text, margin: "8px 0" }}>
+                  {landingCountdown ? `${landingCountdown}s` : timeUntil(travelTime)}
+                </div>
+                <div style={{ fontSize: 11, color: T.textDim }}>
+                  {landingCountdown ? "Prepárate para comprar los items" : "Recuerda comprar los items más rentables al llegar"}
+                </div>
               </div>
             )}
 
@@ -2708,25 +2749,12 @@ export default function TornGrowthOptimizer() {
               ))}
             </div>
 
-            {/* ── Log Trip Button ── */}
-            {bestRoute && bestRoute.totalProfit > 0 && (
-              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-                <button
-                  onClick={() => {
-                    const newTrips = travelTripsToday + 1;
-                    const newEarnings = travelEarningsToday + bestRoute.totalProfit;
-                    setTravelTripsToday(newTrips);
-                    setTravelEarningsToday(newEarnings);
-                    localStorage.setItem("torn_travel_trips", JSON.stringify({ date: new Date().toDateString(), count: newTrips }));
-                    localStorage.setItem("torn_travel_earnings", JSON.stringify({ date: new Date().toDateString(), amount: newEarnings }));
-                  }}
-                  style={{
-                    flex: 1, padding: "10px", background: T.greenDim, border: `1px solid ${T.green}55`,
-                    borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", color: T.green,
-                  }}
-                >
-                  + Registrar Viaje (${fmt(bestRoute.totalProfit)} beneficio)
-                </button>
+            {/* ── Trip Counter Info ── */}
+            {(
+              <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center" }}>
+                <div style={{ flex: 1, fontSize: 11, color: T.textDim }}>
+                  Los viajes se cuentan automáticamente al aterrizar
+                </div>
                 <button
                   onClick={() => {
                     setTravelTripsToday(0);
@@ -2735,11 +2763,11 @@ export default function TornGrowthOptimizer() {
                     localStorage.setItem("torn_travel_earnings", JSON.stringify({ date: new Date().toDateString(), amount: 0 }));
                   }}
                   style={{
-                    padding: "10px 16px", background: T.card, border: `1px solid ${T.border}`,
+                    padding: "8px 14px", background: T.card, border: `1px solid ${T.border}`,
                     borderRadius: 8, fontSize: 11, cursor: "pointer", fontFamily: "inherit", color: T.textMuted,
                   }}
                 >
-                  Reset
+                  Reset contador
                 </button>
               </div>
             )}
