@@ -654,43 +654,64 @@ const TICKET_TYPES = [
 ];
 
 // Calculate travel profits — uses YATA stock as primary source for items + costs
-const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock) => {
+const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, droqsData) => {
   const { ticketIndex, carrySlots, maxItemCost } = travelConfig;
   const ticketMod = TICKET_TYPES[ticketIndex]?.modifier ?? 1.0;
   const hasYata = foreignStock && Object.keys(foreignStock).length > 0;
+
+  // Build DroqsDB lookup: { countryName: { itemId: { estimatedRestockMinutes, ... } } }
+  const droqsLookup = {};
+  if (Array.isArray(droqsData?.countries)) {
+    for (const country of droqsData.countries) {
+      droqsLookup[country.country] = {};
+      for (const item of (country.items || [])) {
+        droqsLookup[country.country][item.itemId] = item;
+      }
+    }
+  }
 
   return TRAVEL_DESTINATIONS.map(dest => {
     const yataStock = foreignStock?.[dest.code]?.stocks || [];
     const yataUpdate = foreignStock?.[dest.code]?.update || null;
 
-    // Build item list from YATA stock data (real items + real abroad costs)
+    // Build item list from YATA stock data + DroqsDB restock info
+    const oneWayMinForPrediction = Math.max(1, Math.ceil(dest.flightTime * ticketMod));
+    const droqsCountry = droqsLookup[dest.destination] || {};
     const allDestItems = yataStock.map(stockItem => {
       const marketItem = allItems?.[stockItem.id];
       const real = realPrices?.[stockItem.id];
-      // Use real scan price if available, otherwise market_value estimate
-      const sellPrice = real?.cheapest || marketItem?.market_value || 0;
-      const priceSource = real?.cheapest ? "market" : sellPrice > 0 ? "estimate" : "no_data";
-      const avgBazaar = real?.avgBazaar || sellPrice;
+      const droqsItem = droqsCountry[stockItem.id];
+      // Use real scan price > DroqsDB bazaar price > market_value
+      const sellPrice = real?.cheapest || droqsItem?.bazaarPrice || marketItem?.market_value || 0;
+      const priceSource = real?.cheapest ? "market" : droqsItem?.bazaarPrice ? "droqsdb" : sellPrice > 0 ? "estimate" : "no_data";
+      const avgBazaar = real?.avgBazaar || droqsItem?.bazaarPrice || sellPrice;
       const marketListings = real?.totalListings || 0;
-      const abroadCost = stockItem.cost;
+      const abroadCost = droqsItem?.buyPrice || stockItem.cost;
       const abroadStock = stockItem.quantity;
       // Subtract Item Market commission (5%)
       const sellAfterFee = Math.round(sellPrice * 0.95);
       const profit = sellAfterFee - abroadCost;
       const itemName = marketItem?.name || stockItem.name;
+      // DroqsDB restock data
+      const restockMin = droqsItem?.estimatedRestockMinutes ?? null;
+      const droqsProfitPerMin = droqsItem?.profitPerMinute ?? null;
       const type = PLUSHIE_IDS.has(stockItem.id) ? "plushie"
         : FLOWER_IDS.has(stockItem.id) ? "flower" : "item";
+
+      // Will this item be in stock when I arrive? (smart prediction)
+      const willBeInStock = abroadStock > 0 ? true
+        : restockMin !== null && restockMin <= oneWayMinForPrediction ? true : false;
 
       return {
         id: stockItem.id, name: stockItem.name, marketName: itemName,
         type, sellPrice, sellAfterFee, profit, priceSource, avgBazaar, marketListings,
-        abroadStock, abroadCost, yataUpdate,
+        abroadStock, abroadCost, yataUpdate, restockMin, droqsProfitPerMin, willBeInStock,
       };
     }).sort((a, b) => b.profit - a.profit);
 
-    // Best combo: fill carry slots allowing multiples, respecting stock + budget limits
+    // Best combo: fill slots with profitable items (in stock OR will restock before arrival)
     const inStockItems = allDestItems.filter(it =>
-      it.abroadStock > 0 && it.profit > 0 &&
+      (it.abroadStock > 0 || it.willBeInStock) && it.profit > 0 &&
       (maxItemCost === 0 || it.abroadCost <= maxItemCost)
     );
     const bestCombo = [];
@@ -1037,7 +1058,7 @@ export default function TornGrowthOptimizer() {
     } catch {}
     return 0;
   });
-  const [travelShowAllItems, setTravelShowAllItems] = useState(false);
+  const [travelExpandedCountries, setTravelExpandedCountries] = useState(new Set());
   const [travelMaxCost, setTravelMaxCost] = useState(() => parseInt(localStorage.getItem("torn_travel_maxcost") || "50000", 10));
   const [landingCountdown, setLandingCountdown] = useState(null); // seconds left, null = not close
   const [travelRealPrices, setTravelRealPrices] = useState({}); // { itemId: { cheapest, qty, avgBazaar } }
@@ -2603,7 +2624,7 @@ export default function TornGrowthOptimizer() {
         {/* ═══ TRAVEL TAB (ULTRA-OPTIMIZED) ═══ */}
         {tab === "travel" && (() => {
           const travelConfig = { ticketIndex: travelTicket, carrySlots: travelSlots, maxItemCost: travelMaxCost };
-          const travelResults = calcTravelProfits(allItems, travelConfig, travelRealPrices, travelForeignStock);
+          const travelResults = calcTravelProfits(allItems, travelConfig, travelRealPrices, travelForeignStock, travelDroqsData);
           const bestRoute = travelResults[0];
           const ticketInfo = TICKET_TYPES[travelTicket] || TICKET_TYPES[0];
 
@@ -2876,17 +2897,9 @@ export default function TornGrowthOptimizer() {
 
             {/* ── Ranking de Destinos (sorted by profit/hour) ── */}
             <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
-              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.border}` }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: T.accent }}>Ranking de Destinos ($/hora)</div>
-                <button
-                  onClick={() => setTravelShowAllItems(!travelShowAllItems)}
-                  style={{
-                    padding: "4px 10px", background: T.bg, border: `1px solid ${T.border}`,
-                    borderRadius: 6, fontSize: 10, color: T.textDim, cursor: "pointer", fontFamily: "inherit",
-                  }}
-                >
-                  {travelShowAllItems ? "Ocultar Items" : "Ver Items"}
-                </button>
+                <div style={{ fontSize: 10, color: T.textMuted, marginTop: 2 }}>Clic en un país para ver sus items</div>
               </div>
               {/* Header */}
               <div style={{ display: "grid", gridTemplateColumns: "30px 2fr 1fr 1fr 1.2fr 1.2fr", padding: "8px 16px", borderBottom: `1px solid ${T.border}`, gap: 8 }}>
@@ -2898,9 +2911,15 @@ export default function TornGrowthOptimizer() {
               {travelResults.map((dest, i) => {
                 const isTop = i === 0;
                 const hasProfit = dest.totalProfit > 0;
+                const isExpanded = travelExpandedCountries.has(dest.destination);
                 return (
                   <div key={dest.destination}>
                     <div
+                      onClick={() => setTravelExpandedCountries(prev => {
+                        const next = new Set(prev);
+                        next.has(dest.destination) ? next.delete(dest.destination) : next.add(dest.destination);
+                        return next;
+                      })}
                       style={{
                         display: "grid",
                         gridTemplateColumns: "30px 2fr 1fr 1fr 1.2fr 1.2fr",
@@ -2908,14 +2927,18 @@ export default function TornGrowthOptimizer() {
                         borderBottom: `1px solid ${T.border}`,
                         gap: 8,
                         alignItems: "center",
-                        background: isTop ? T.greenDim : "transparent",
+                        background: isTop ? T.greenDim : isExpanded ? T.bg + "88" : "transparent",
+                        cursor: "pointer",
                       }}
                     >
                       <div style={{ fontSize: 14, fontWeight: 800, color: isTop ? T.green : T.textMuted }}>
                         {isTop ? "👑" : `${i + 1}`}
                       </div>
                       <div>
-                        <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{dest.flag} {dest.destination}</span>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>
+                          <span style={{ fontSize: 10, color: T.textMuted, marginRight: 4 }}>{isExpanded ? "▼" : "▶"}</span>
+                          {dest.flag} {dest.destination}
+                        </span>
                         {dest.hasStockData && dest.outOfStockCount > 0 && (
                           <span style={{ fontSize: 9, color: T.red, marginLeft: 6, fontWeight: 600 }}>
                             {dest.outOfStockCount} agotado{dest.outOfStockCount > 1 ? "s" : ""}
@@ -2936,24 +2959,24 @@ export default function TornGrowthOptimizer() {
                         {hasProfit ? `$${fmt(dest.dailyProfit)}` : "N/A"}
                       </div>
                     </div>
-                    {/* Expanded item details with stock + real prices */}
-                    {travelShowAllItems && hasProfit && (
+                    {/* Expanded item details with stock + real prices + restock */}
+                    {isExpanded && (
                       <div style={{ padding: "8px 16px 12px 46px", borderBottom: `1px solid ${T.border}`, background: T.bg + "44" }}>
                         {/* Column headers */}
-                        <div style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 1fr 1fr 0.8fr", gap: 8, padding: "2px 0 6px", borderBottom: `1px solid ${T.border}`, marginBottom: 4 }}>
-                          {["Item", "Compra", "Venta", "Beneficio", "Stock"].map(h => (
+                        <div style={{ display: "grid", gridTemplateColumns: "2.2fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr", gap: 6, padding: "2px 0 6px", borderBottom: `1px solid ${T.border}`, marginBottom: 4 }}>
+                          {["Item", "Compra", "Venta", "Beneficio", "Stock", "Restock"].map(h => (
                             <div key={h} style={{ fontSize: 9, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>{h}</div>
                           ))}
                         </div>
                         {dest.allDestItems.map((it, j) => {
                           const comboQty = dest.bestCombo.filter(c => c.id === it.id).length;
                           const inCombo = comboQty > 0;
-                          const outOfStock = it.abroadStock === 0;
+                          const outOfStock = it.abroadStock === 0 && !it.willBeInStock;
                           return (
                             <div key={j} style={{
-                              display: "grid", gridTemplateColumns: "2.5fr 1fr 1fr 1fr 0.8fr",
-                              gap: 8, padding: "4px 0", fontSize: 11, alignItems: "center",
-                              opacity: outOfStock ? 0.4 : 1,
+                              display: "grid", gridTemplateColumns: "2.2fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr",
+                              gap: 6, padding: "4px 0", fontSize: 11, alignItems: "center",
+                              opacity: outOfStock ? 0.35 : 1,
                             }}>
                               <div style={{ color: inCombo ? T.text : T.textMuted }}>
                                 {inCombo ? `✓${comboQty > 1 ? `x${comboQty}` : ""} ` : "  "}
@@ -2965,18 +2988,29 @@ export default function TornGrowthOptimizer() {
                               </div>
                               <div>
                                 <span style={{ color: T.textDim }}>${fmt(it.sellPrice)}</span>
-                                {it.priceSource === "market" && (
-                                  <span style={{ fontSize: 8, color: T.green, marginLeft: 4 }}>REAL</span>
-                                )}
+                                {it.priceSource === "market" && <span style={{ fontSize: 8, color: T.green, marginLeft: 2 }}>REAL</span>}
+                                {it.priceSource === "droqsdb" && <span style={{ fontSize: 8, color: T.accent, marginLeft: 2 }}>DB</span>}
                               </div>
                               <div style={{ color: it.profit > 0 ? T.green : T.red, fontWeight: 600 }}>
                                 {it.profit > 0 ? "+" : ""}${fmt(it.profit)}
                               </div>
-                              <div style={{
-                                fontSize: 10, fontWeight: 600,
-                                color: it.abroadStock === null ? T.textMuted : it.abroadStock > 0 ? T.green : T.red,
-                              }}>
-                                {it.abroadStock === null ? "—" : it.abroadStock > 0 ? `${it.abroadStock}` : "AGOTADO"}
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>
+                                {it.abroadStock > 0
+                                  ? <span style={{ color: T.green }}>{it.abroadStock}</span>
+                                  : it.willBeInStock
+                                    ? <span style={{ color: T.gold }}>RESTOCK</span>
+                                    : <span style={{ color: T.red }}>AGOTADO</span>
+                                }
+                              </div>
+                              <div style={{ fontSize: 10, color: T.textMuted }}>
+                                {it.restockMin !== null
+                                  ? it.abroadStock > 0
+                                    ? <span style={{ color: T.textMuted }}>—</span>
+                                    : <span style={{ color: it.willBeInStock ? T.gold : T.textMuted }}>
+                                        ~{it.restockMin}m {it.willBeInStock ? "✓" : ""}
+                                      </span>
+                                  : "—"
+                                }
                               </div>
                             </div>
                           );
