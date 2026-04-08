@@ -1550,12 +1550,40 @@ export default function TornGrowthOptimizer() {
     }
   }, [apiKey, fetchData]);
 
+  // Refresh restock timers from DroqsDB (fast, small endpoint)
+  const refreshRestockTimers = useCallback(async () => {
+    try {
+      const res = await fetch("https://droqsdb.com/api/public/v1/restocking-soon");
+      if (!res.ok) return;
+      const json = await res.json();
+      // Update DroqsDB data with fresh restock timers
+      setTravelDroqsData(prev => {
+        if (!prev?.countries) return prev;
+        const restockByKey = {};
+        for (const item of (json.items || [])) {
+          restockByKey[`${item.country}_${item.itemId}`] = item;
+        }
+        const updated = { ...prev, countries: prev.countries.map(c => ({
+          ...c,
+          items: (c.items || []).map(item => {
+            const fresh = restockByKey[`${c.country}_${item.itemId}`];
+            if (fresh) return { ...item, stock: 0, estimatedRestockMinutes: fresh.estimatedRestockMinutes, estimatedRestockDisplay: fresh.estimatedRestockDisplay };
+            return item;
+          }),
+        }))};
+        return updated;
+      });
+    } catch {}
+  }, []);
+
   // Auto-load stock on startup (YATA/DroqsDB are external, no Torn API cost)
   useEffect(() => {
     if (!apiKey) return;
     fetchForeignStock();
-    const stockInterval = setInterval(fetchForeignStock, 5 * 60 * 1000);
-    return () => clearInterval(stockInterval);
+    // Full refresh every 3 min, restock timers every 1 min
+    const stockInterval = setInterval(fetchForeignStock, 3 * 60 * 1000);
+    const restockInterval = setInterval(refreshRestockTimers, 60 * 1000);
+    return () => { clearInterval(stockInterval); clearInterval(restockInterval); };
   }, [apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Auto-scan travel item prices once YATA stock loads (silent, no alerts)
