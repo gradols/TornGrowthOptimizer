@@ -23,3 +23,10 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Dev/local scripts
+chat-server.cjs
+highlow-counter.js
+src/egg-finder.js
+src/heasley-egg-navigator.js
+src/torn-egg-hunter-pro.user.js
