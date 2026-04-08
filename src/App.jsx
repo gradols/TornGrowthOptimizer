@@ -1257,12 +1257,6 @@ export default function TornGrowthOptimizer() {
           const sorted = [...listings].sort((a, b) => a.price - b.price);
           const cheapest = sorted[0].price;
 
-          // Share price data with travel section
-          setTravelRealPrices(prev => ({ ...prev, [id]: {
-            cheapest, qty: sorted[0].amount || 1,
-            avgBazaar: cheapest, totalListings: sorted.length,
-          }}));
-
           // Media ponderada de los primeros 15 listings (sin contar el más barato)
           const forAvg = sorted.slice(1, 16);
           let totalQty = 0, totalValue = 0;
@@ -1318,7 +1312,6 @@ export default function TornGrowthOptimizer() {
 
     marketResultsRef.current.sort((a, b) => b.discount - a.discount);
     setMarketDeals([...marketResultsRef.current]);
-    setTravelLastPriceUpdate(Date.now()); // Travel prices updated via market scan
     setScanProgress("");
   }, []);
 
@@ -1383,30 +1376,20 @@ export default function TornGrowthOptimizer() {
     targetActiveRef.current = false;
   }, []);
 
-  // Auto-load items and start market scan automatically
-  const autoScanStartedRef = useRef(false);
+  // Auto-load items (market scanner is manual only)
   useEffect(() => {
     if (!apiKey) return;
-    const loadAndScan = async () => {
-      let items = allItems;
-      if (!items) {
+    const loadItems = async () => {
+      if (!allItems) {
         try {
           const res = await fetch(`${API_BASE}/torn/?selections=items&key=${apiKey}`);
           const json = await res.json();
-          if (json.items) { items = json.items; setAllItems(json.items); }
+          if (json.items) setAllItems(json.items);
         } catch {}
       }
-      // Auto-start scanner once on load
-      if (items && !autoScanStartedRef.current && !scanActiveRef.current) {
-        autoScanStartedRef.current = true;
-        scanActiveRef.current = true;
-        await scanAllMarkets(items, apiKey);
-        scanActiveRef.current = false;
-        setScanning(false);
-      }
     };
-    loadAndScan();
-  }, [apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
+    loadItems();
+  }, [apiKey]);
 
   // Manual scan loop - only runs when user clicks Start
   const startMarketScan = useCallback(async () => {
@@ -1525,14 +1508,21 @@ export default function TornGrowthOptimizer() {
   }, [apiKey, fetchData]);
 
   // Auto-load stock on startup (YATA/DroqsDB are external, no Torn API cost)
-  // Prices are manual-only to avoid Torn API rate limits
   useEffect(() => {
     if (!apiKey) return;
     fetchForeignStock();
-    // Refresh stock every 5 min (external APIs, no rate limit issue)
     const stockInterval = setInterval(fetchForeignStock, 5 * 60 * 1000);
     return () => clearInterval(stockInterval);
   }, [apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Auto-scan travel item prices once YATA stock loads (silent, no alerts)
+  const travelAutoScannedRef = useRef(false);
+  useEffect(() => {
+    if (!apiKey || !travelForeignStock || travelAutoScannedRef.current) return;
+    if (Object.keys(travelForeignStock).length === 0) return;
+    travelAutoScannedRef.current = true;
+    fetchTravelRealPrices();
+  }, [travelForeignStock]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Request notification permission
   useEffect(() => {
