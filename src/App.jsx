@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 
 const API_BASE = "https://api.torn.com";
 const NOTIFY_THRESHOLD = 0.8;
@@ -128,6 +128,300 @@ const CRIME_GUIDE = [
   { nerve: 20, name: "Assassination", phase: "Late", note: "Máximo cash/nerve" },
   { nerve: 25, name: "Grand Theft Auto", phase: "Late", note: "Coches valiosos" },
 ];
+
+// ─── HONORS DATABASE (trackable via personalstats) ─────────────────────────
+// Each honor maps to a personalstats field with a target value
+const HONORS_DB = [
+  // ── ATTACKS ──
+  { id: 1,   name: "First Blood",         category: "Ataques",   stat: "attackswon",        target: 1,       icon: "⚔️" },
+  { id: 2,   name: "Punisher",            category: "Ataques",   stat: "attackswon",        target: 100,     icon: "⚔️" },
+  { id: 3,   name: "Executioner",         category: "Ataques",   stat: "attackswon",        target: 500,     icon: "⚔️" },
+  { id: 4,   name: "Reaper",              category: "Ataques",   stat: "attackswon",        target: 1000,    icon: "⚔️" },
+  { id: 5,   name: "Genocide",            category: "Ataques",   stat: "attackswon",        target: 2500,    icon: "⚔️" },
+  { id: 6,   name: "Carnage",             category: "Ataques",   stat: "attackswon",        target: 5000,    icon: "⚔️" },
+  { id: 7,   name: "Annihilation",        category: "Ataques",   stat: "attackswon",        target: 10000,   icon: "⚔️" },
+  { id: 8,   name: "Decimation",          category: "Ataques",   stat: "attackswon",        target: 25000,   icon: "⚔️" },
+  { id: 9,   name: "Obliteration",        category: "Ataques",   stat: "attackswon",        target: 50000,   icon: "⚔️" },
+  { id: 10,  name: "Annihilator",         category: "Ataques",   stat: "attackswon",        target: 100000,  icon: "⚔️" },
+
+  // ── DEFENDS ──
+  { id: 11,  name: "Shield",              category: "Defensas",  stat: "defendswon",        target: 1,       icon: "🛡️" },
+  { id: 12,  name: "Fortress",            category: "Defensas",  stat: "defendswon",        target: 100,     icon: "🛡️" },
+  { id: 13,  name: "Bastion",             category: "Defensas",  stat: "defendswon",        target: 250,     icon: "🛡️" },
+  { id: 14,  name: "Citadel",             category: "Defensas",  stat: "defendswon",        target: 500,     icon: "🛡️" },
+  { id: 15,  name: "Bulwark",             category: "Defensas",  stat: "defendswon",        target: 1000,    icon: "🛡️" },
+  { id: 16,  name: "Rampart",             category: "Defensas",  stat: "defendswon",        target: 2500,    icon: "🛡️" },
+  { id: 17,  name: "Stronghold",          category: "Defensas",  stat: "defendswon",        target: 5000,    icon: "🛡️" },
+  { id: 18,  name: "Impregnable",         category: "Defensas",  stat: "defendswon",        target: 10000,   icon: "🛡️" },
+
+  // ── CRIMES ──
+  { id: 100, name: "Petty Thief",         category: "Crímenes",  stat: "criminaloffenses",  target: 100,     icon: "🔫" },
+  { id: 101, name: "Criminal",            category: "Crímenes",  stat: "criminaloffenses",  target: 500,     icon: "🔫" },
+  { id: 102, name: "Felon",               category: "Crímenes",  stat: "criminaloffenses",  target: 1000,    icon: "🔫" },
+  { id: 103, name: "Hardened Criminal",   category: "Crímenes",  stat: "criminaloffenses",  target: 2500,    icon: "🔫" },
+  { id: 104, name: "Crime Lord",          category: "Crímenes",  stat: "criminaloffenses",  target: 5000,    icon: "🔫" },
+  { id: 105, name: "Kingpin",             category: "Crímenes",  stat: "criminaloffenses",  target: 10000,   icon: "🔫" },
+  { id: 106, name: "Mastermind",          category: "Crímenes",  stat: "criminaloffenses",  target: 25000,   icon: "🔫" },
+
+  // ── BUSTS ──
+  { id: 200, name: "Bust Beginner",       category: "Busts",     stat: "peoplebusted",      target: 50,      icon: "🔓" },
+  { id: 201, name: "Bust Pro",            category: "Busts",     stat: "peoplebusted",      target: 250,     icon: "🔓" },
+  { id: 202, name: "Bust Master",         category: "Busts",     stat: "peoplebusted",      target: 500,     icon: "🔓" },
+  { id: 203, name: "Bust Legend",          category: "Busts",     stat: "peoplebusted",      target: 1000,    icon: "🔓" },
+  { id: 204, name: "Bust God",            category: "Busts",     stat: "peoplebusted",      target: 2500,    icon: "🔓" },
+
+  // ── TRAVEL ──
+  { id: 300, name: "Traveler",            category: "Viajes",    stat: "traveltimes",       target: 25,      icon: "✈️" },
+  { id: 301, name: "Globetrotter",        category: "Viajes",    stat: "traveltimes",       target: 100,     icon: "✈️" },
+  { id: 302, name: "Jet Setter",          category: "Viajes",    stat: "traveltimes",       target: 250,     icon: "✈️" },
+  { id: 303, name: "World Traveler",      category: "Viajes",    stat: "traveltimes",       target: 500,     icon: "✈️" },
+  { id: 304, name: "Frequent Flyer",      category: "Viajes",    stat: "traveltimes",       target: 1000,    icon: "✈️" },
+
+  // ── DRUGS ──
+  { id: 400, name: "Xanax Addict",        category: "Drogas",    stat: "xantaken",          target: 100,     icon: "💊" },
+  { id: 401, name: "Xanax Junkie",        category: "Drogas",    stat: "xantaken",          target: 250,     icon: "💊" },
+  { id: 402, name: "Xanax Fiend",         category: "Drogas",    stat: "xantaken",          target: 500,     icon: "💊" },
+  { id: 403, name: "Xanax Overdose",      category: "Drogas",    stat: "xantaken",          target: 1000,    icon: "💊" },
+  { id: 410, name: "Ecstasy Lover",       category: "Drogas",    stat: "exttaken",          target: 50,      icon: "🌈" },
+  { id: 411, name: "Ecstasy Maniac",      category: "Drogas",    stat: "exttaken",          target: 250,     icon: "🌈" },
+  { id: 412, name: "Ecstasy Fiend",       category: "Drogas",    stat: "exttaken",          target: 500,     icon: "🌈" },
+  { id: 420, name: "LSD Tripper",         category: "Drogas",    stat: "lsdtaken",          target: 50,      icon: "🍄" },
+  { id: 421, name: "LSD Maniac",          category: "Drogas",    stat: "lsdtaken",          target: 250,     icon: "🍄" },
+  { id: 422, name: "LSD Fiend",           category: "Drogas",    stat: "lsdtaken",          target: 500,     icon: "🍄" },
+
+  // ── BOUNTIES ──
+  { id: 500, name: "Bounty Hunter",       category: "Bounties",  stat: "bountiescollected", target: 25,      icon: "🎲" },
+  { id: 501, name: "Bounty Pro",          category: "Bounties",  stat: "bountiescollected", target: 100,     icon: "🎲" },
+  { id: 502, name: "Bounty Master",       category: "Bounties",  stat: "bountiescollected", target: 250,     icon: "🎲" },
+  { id: 503, name: "Bounty Legend",        category: "Bounties",  stat: "bountiescollected", target: 500,     icon: "🎲" },
+
+  // ── LOOTING ──
+  { id: 700, name: "Looter",              category: "Saqueo",    stat: "itemslooted",       target: 50,      icon: "📦" },
+  { id: 701, name: "Plunderer",           category: "Saqueo",    stat: "itemslooted",       target: 250,     icon: "📦" },
+  { id: 702, name: "Pillager",            category: "Saqueo",    stat: "itemslooted",       target: 500,     icon: "📦" },
+  { id: 703, name: "Raider",              category: "Saqueo",    stat: "itemslooted",       target: 1000,    icon: "📦" },
+
+  // ── REVIVES ──
+  { id: 800, name: "Medic",               category: "Revives",   stat: "revives",           target: 50,      icon: "💉" },
+  { id: 801, name: "Field Medic",         category: "Revives",   stat: "revives",           target: 250,     icon: "💉" },
+  { id: 802, name: "Surgeon",             category: "Revives",   stat: "revives",           target: 500,     icon: "💉" },
+  { id: 803, name: "Angel of Death",      category: "Revives",   stat: "revives",           target: 1000,    icon: "💉" },
+
+  // ── TRAINING ──
+  { id: 900, name: "Gym Rat",             category: "Gimnasio",  stat: "trainsreceived",    target: 500,     icon: "🏋️" },
+  { id: 901, name: "Body Builder",        category: "Gimnasio",  stat: "trainsreceived",    target: 1000,    icon: "🏋️" },
+  { id: 902, name: "Iron Pumper",         category: "Gimnasio",  stat: "trainsreceived",    target: 2500,    icon: "🏋️" },
+  { id: 903, name: "Fitness Freak",       category: "Gimnasio",  stat: "trainsreceived",    target: 5000,    icon: "🏋️" },
+  { id: 904, name: "Gym Legend",           category: "Gimnasio",  stat: "trainsreceived",    target: 10000,   icon: "🏋️" },
+
+  // ── MONEY (mugging) ──
+  { id: 1000, name: "Mugger",             category: "Mugging",   stat: "attacksstealthed",  target: 50,      icon: "💰" },
+  { id: 1001, name: "Street Thug",        category: "Mugging",   stat: "attacksstealthed",  target: 250,     icon: "💰" },
+  { id: 1002, name: "Stick Up Artist",    category: "Mugging",   stat: "attacksstealthed",  target: 500,     icon: "💰" },
+
+  // ── NETWORTH ──
+  { id: 1100, name: "Rich",               category: "Dinero",    stat: "_networth",         target: 5e6,     icon: "💵" },
+  { id: 1101, name: "Wealthy",            category: "Dinero",    stat: "_networth",         target: 50e6,    icon: "💵" },
+  { id: 1102, name: "Millionaire",        category: "Dinero",    stat: "_networth",         target: 100e6,   icon: "💵" },
+  { id: 1103, name: "Multi-Millionaire",  category: "Dinero",    stat: "_networth",         target: 500e6,   icon: "💵" },
+  { id: 1104, name: "Billionaire",        category: "Dinero",    stat: "_networth",         target: 1e9,     icon: "💵" },
+
+  // ── LEVEL ──
+  { id: 1200, name: "Level 10",           category: "Nivel",     stat: "_level",            target: 10,      icon: "📊" },
+  { id: 1201, name: "Level 25",           category: "Nivel",     stat: "_level",            target: 25,      icon: "📊" },
+  { id: 1202, name: "Level 50",           category: "Nivel",     stat: "_level",            target: 50,      icon: "📊" },
+  { id: 1203, name: "Level 75",           category: "Nivel",     stat: "_level",            target: 75,      icon: "📊" },
+  { id: 1204, name: "Level 100",          category: "Nivel",     stat: "_level",            target: 100,     icon: "📊" },
+
+  // ── REFILLS ──
+  { id: 1300, name: "Refill Addict",      category: "Refills",   stat: "refills",           target: 100,     icon: "⚡" },
+  { id: 1301, name: "Refill Junkie",      category: "Refills",   stat: "refills",           target: 250,     icon: "⚡" },
+
+  // ── ENERGY DRINKS ──
+  { id: 1400, name: "Energy Drinker",     category: "Bebidas",   stat: "energydrinkused",   target: 50,      icon: "🥤" },
+  { id: 1401, name: "Caffeine Addict",    category: "Bebidas",   stat: "energydrinkused",   target: 250,     icon: "🥤" },
+  { id: 1402, name: "Wired",              category: "Bebidas",   stat: "energydrinkused",   target: 500,     icon: "🥤" },
+
+  // ── KILL STREAKS ──
+  { id: 1500, name: "On a Roll",          category: "Rachas",    stat: "bestkillstreak",    target: 5,       icon: "🔥" },
+  { id: 1501, name: "Unstoppable",        category: "Rachas",    stat: "bestkillstreak",    target: 10,      icon: "🔥" },
+  { id: 1502, name: "Rampage",            category: "Rachas",    stat: "bestkillstreak",    target: 25,      icon: "🔥" },
+  { id: 1503, name: "Berserker",          category: "Rachas",    stat: "bestkillstreak",    target: 50,      icon: "🔥" },
+  { id: 1504, name: "Relentless",         category: "Rachas",    stat: "bestkillstreak",    target: 100,     icon: "🔥" },
+  { id: 1505, name: "Onslaught",          category: "Rachas",    stat: "bestkillstreak",    target: 250,     icon: "🔥" },
+  { id: 1506, name: "Wrath",              category: "Rachas",    stat: "bestkillstreak",    target: 500,     icon: "🔥" },
+
+  // ── ORGANIZED CRIMES ──
+  { id: 1600, name: "OC Beginner",        category: "OC",        stat: "organisedcrimes",   target: 25,      icon: "🤝" },
+  { id: 1601, name: "OC Veteran",         category: "OC",        stat: "organisedcrimes",   target: 100,     icon: "🤝" },
+  { id: 1602, name: "OC Expert",          category: "OC",        stat: "organisedcrimes",   target: 250,     icon: "🤝" },
+  { id: 1603, name: "OC Master",          category: "OC",        stat: "organisedcrimes",   target: 500,     icon: "🤝" },
+
+  // ── DAYS OLD (age honors) ──
+  { id: 1700, name: "100 Days",           category: "Edad",      stat: "_age",              target: 100,     icon: "📅" },
+  { id: 1701, name: "1 Year",             category: "Edad",      stat: "_age",              target: 365,     icon: "📅" },
+  { id: 1702, name: "2 Years",            category: "Edad",      stat: "_age",              target: 730,     icon: "📅" },
+  { id: 1703, name: "3 Years",            category: "Edad",      stat: "_age",              target: 1095,    icon: "📅" },
+  { id: 1704, name: "5 Years",            category: "Edad",      stat: "_age",              target: 1825,    icon: "📅" },
+  { id: 1705, name: "10 Years",           category: "Edad",      stat: "_age",              target: 3650,    icon: "📅" },
+
+  // ── HOSPITAL VISITS (hospitalize others) ──
+  { id: 1800, name: "Hospitalizer",       category: "Hospital",  stat: "hospitalized",      target: 100,     icon: "🏥" },
+  { id: 1801, name: "Nightmare",          category: "Hospital",  stat: "hospitalized",      target: 500,     icon: "🏥" },
+  { id: 1802, name: "Terror",             category: "Hospital",  stat: "hospitalized",      target: 1000,    icon: "🏥" },
+  { id: 1803, name: "Dread",              category: "Hospital",  stat: "hospitalized",      target: 2500,    icon: "🏥" },
+  { id: 1804, name: "Horror",             category: "Hospital",  stat: "hospitalized",      target: 5000,    icon: "🏥" },
+];
+
+// ─── MEDALS DATABASE (trackable via personalstats) ──────────────────────────
+// Medals also award merit points. type: "medal" to distinguish from honors
+const MEDALS_DB = [
+  // ── ATTACK MEDALS ──
+  { id: "m_atk1",  name: "Beginner Attacker",     category: "Ataques",   stat: "attackswon",        target: 50,      icon: "🥉", merits: 1 },
+  { id: "m_atk2",  name: "Intermediate Attacker",  category: "Ataques",   stat: "attackswon",        target: 250,     icon: "🥈", merits: 2 },
+  { id: "m_atk3",  name: "Advanced Attacker",      category: "Ataques",   stat: "attackswon",        target: 1000,    icon: "🥇", merits: 5 },
+  { id: "m_atk4",  name: "Expert Attacker",        category: "Ataques",   stat: "attackswon",        target: 2000,    icon: "🏅", merits: 5 },
+  { id: "m_atk5",  name: "Master Attacker",        category: "Ataques",   stat: "attackswon",        target: 4000,    icon: "🏅", merits: 10 },
+  { id: "m_atk6",  name: "Elite Attacker",         category: "Ataques",   stat: "attackswon",        target: 8000,    icon: "🏅", merits: 10 },
+
+  // ── DEFEND MEDALS ──
+  { id: "m_def1",  name: "Beginner Defender",      category: "Defensas",  stat: "defendswon",        target: 25,      icon: "🥉", merits: 1 },
+  { id: "m_def2",  name: "Intermediate Defender",  category: "Defensas",  stat: "defendswon",        target: 100,     icon: "🥈", merits: 2 },
+  { id: "m_def3",  name: "Advanced Defender",      category: "Defensas",  stat: "defendswon",        target: 500,     icon: "🥇", merits: 5 },
+  { id: "m_def4",  name: "Expert Defender",        category: "Defensas",  stat: "defendswon",        target: 1000,    icon: "🏅", merits: 5 },
+  { id: "m_def5",  name: "Master Defender",        category: "Defensas",  stat: "defendswon",        target: 2500,    icon: "🏅", merits: 10 },
+
+  // ── CRIME MEDALS ──
+  { id: "m_crm1",  name: "Beginner Criminal",      category: "Crímenes",  stat: "criminaloffenses",  target: 100,     icon: "🥉", merits: 1 },
+  { id: "m_crm2",  name: "Intermediate Criminal",  category: "Crímenes",  stat: "criminaloffenses",  target: 500,     icon: "🥈", merits: 2 },
+  { id: "m_crm3",  name: "Advanced Criminal",      category: "Crímenes",  stat: "criminaloffenses",  target: 1000,    icon: "🥇", merits: 5 },
+  { id: "m_crm4",  name: "Expert Criminal",        category: "Crímenes",  stat: "criminaloffenses",  target: 5000,    icon: "🏅", merits: 5 },
+  { id: "m_crm5",  name: "Master Criminal",        category: "Crímenes",  stat: "criminaloffenses",  target: 10000,   icon: "🏅", merits: 10 },
+
+  // ── BUST MEDALS ──
+  { id: "m_bst1",  name: "Beginner Buster",        category: "Busts",     stat: "peoplebusted",      target: 25,      icon: "🥉", merits: 1 },
+  { id: "m_bst2",  name: "Intermediate Buster",    category: "Busts",     stat: "peoplebusted",      target: 100,     icon: "🥈", merits: 2 },
+  { id: "m_bst3",  name: "Advanced Buster",        category: "Busts",     stat: "peoplebusted",      target: 500,     icon: "🥇", merits: 5 },
+  { id: "m_bst4",  name: "Expert Buster",          category: "Busts",     stat: "peoplebusted",      target: 1000,    icon: "🏅", merits: 5 },
+
+  // ── TRAVEL MEDALS ──
+  { id: "m_trv1",  name: "Beginner Traveler",      category: "Viajes",    stat: "traveltimes",       target: 25,      icon: "🥉", merits: 1 },
+  { id: "m_trv2",  name: "Intermediate Traveler",  category: "Viajes",    stat: "traveltimes",       target: 50,      icon: "🥈", merits: 2 },
+  { id: "m_trv3",  name: "Advanced Traveler",      category: "Viajes",    stat: "traveltimes",       target: 100,     icon: "🥇", merits: 5 },
+  { id: "m_trv4",  name: "Expert Traveler",        category: "Viajes",    stat: "traveltimes",       target: 250,     icon: "🏅", merits: 5 },
+  { id: "m_trv5",  name: "Master Traveler",        category: "Viajes",    stat: "traveltimes",       target: 500,     icon: "🏅", merits: 10 },
+
+  // ── DRUG MEDALS ──
+  { id: "m_drg1",  name: "Beginner Drug User",     category: "Drogas",    stat: "drugsused",         target: 50,      icon: "🥉", merits: 1 },
+  { id: "m_drg2",  name: "Intermediate Drug User",  category: "Drogas",    stat: "drugsused",         target: 250,     icon: "🥈", merits: 2 },
+  { id: "m_drg3",  name: "Advanced Drug User",     category: "Drogas",    stat: "drugsused",         target: 500,     icon: "🥇", merits: 5 },
+  { id: "m_drg4",  name: "Expert Drug User",       category: "Drogas",    stat: "drugsused",         target: 1000,    icon: "🏅", merits: 5 },
+
+  // ── BOUNTY MEDALS ──
+  { id: "m_bnt1",  name: "Beginner Bounty Hunter", category: "Bounties",  stat: "bountiescollected", target: 10,      icon: "🥉", merits: 1 },
+  { id: "m_bnt2",  name: "Intermediate Bounty",    category: "Bounties",  stat: "bountiescollected", target: 50,      icon: "🥈", merits: 2 },
+  { id: "m_bnt3",  name: "Advanced Bounty",        category: "Bounties",  stat: "bountiescollected", target: 100,     icon: "🥇", merits: 5 },
+  { id: "m_bnt4",  name: "Expert Bounty",          category: "Bounties",  stat: "bountiescollected", target: 250,     icon: "🏅", merits: 5 },
+
+  // ── REVIVE MEDALS ──
+  { id: "m_rev1",  name: "Beginner Reviver",       category: "Revives",   stat: "revives",           target: 25,      icon: "🥉", merits: 1 },
+  { id: "m_rev2",  name: "Intermediate Reviver",   category: "Revives",   stat: "revives",           target: 100,     icon: "🥈", merits: 2 },
+  { id: "m_rev3",  name: "Advanced Reviver",       category: "Revives",   stat: "revives",           target: 250,     icon: "🥇", merits: 5 },
+  { id: "m_rev4",  name: "Expert Reviver",         category: "Revives",   stat: "revives",           target: 500,     icon: "🏅", merits: 5 },
+
+  // ── GYM MEDALS ──
+  { id: "m_gym1",  name: "Beginner Trainer",       category: "Gimnasio",  stat: "trainsreceived",    target: 100,     icon: "🥉", merits: 1 },
+  { id: "m_gym2",  name: "Intermediate Trainer",   category: "Gimnasio",  stat: "trainsreceived",    target: 500,     icon: "🥈", merits: 2 },
+  { id: "m_gym3",  name: "Advanced Trainer",       category: "Gimnasio",  stat: "trainsreceived",    target: 1000,    icon: "🥇", merits: 5 },
+  { id: "m_gym4",  name: "Expert Trainer",         category: "Gimnasio",  stat: "trainsreceived",    target: 2500,    icon: "🏅", merits: 5 },
+  { id: "m_gym5",  name: "Master Trainer",         category: "Gimnasio",  stat: "trainsreceived",    target: 5000,    icon: "🏅", merits: 10 },
+
+  // ── HOSPITAL MEDALS ──
+  { id: "m_hos1",  name: "Beginner Hospitalizer",  category: "Hospital",  stat: "hospitalized",      target: 25,      icon: "🥉", merits: 1 },
+  { id: "m_hos2",  name: "Intermediate Hospitalizer", category: "Hospital", stat: "hospitalized",    target: 100,     icon: "🥈", merits: 2 },
+  { id: "m_hos3",  name: "Advanced Hospitalizer",  category: "Hospital",  stat: "hospitalized",      target: 500,     icon: "🥇", merits: 5 },
+  { id: "m_hos4",  name: "Expert Hospitalizer",    category: "Hospital",  stat: "hospitalized",      target: 1000,    icon: "🏅", merits: 5 },
+
+  // ── ITEM USE MEDALS ──
+  { id: "m_itm1",  name: "Beginner Consumer",      category: "Items",     stat: "useractivity",      target: 100,     icon: "🥉", merits: 1 },
+  { id: "m_itm2",  name: "Shopaholic",             category: "Items",     stat: "itemsbought",       target: 100,     icon: "🥈", merits: 2 },
+  { id: "m_itm3",  name: "Big Spender",            category: "Items",     stat: "itemsbought",       target: 500,     icon: "🥇", merits: 5 },
+  { id: "m_itm4",  name: "Market Mogul",           category: "Items",     stat: "itemsbought",       target: 1000,    icon: "🏅", merits: 5 },
+
+  // ── NETWORTH MEDALS ──
+  { id: "m_nw1",   name: "Comfortable",            category: "Dinero",    stat: "_networth",         target: 1e6,     icon: "🥉", merits: 1 },
+  { id: "m_nw2",   name: "Well Off",               category: "Dinero",    stat: "_networth",         target: 10e6,    icon: "🥈", merits: 2 },
+  { id: "m_nw3",   name: "Affluent",               category: "Dinero",    stat: "_networth",         target: 100e6,   icon: "🥇", merits: 5 },
+  { id: "m_nw4",   name: "Opulent",                category: "Dinero",    stat: "_networth",         target: 500e6,   icon: "🏅", merits: 5 },
+  { id: "m_nw5",   name: "Tycoon",                 category: "Dinero",    stat: "_networth",         target: 1e9,     icon: "🏅", merits: 10 },
+
+  // ── AGE/DAYS OLD MEDALS ──
+  { id: "m_age1",  name: "One Month Old",          category: "Edad",      stat: "age",               target: 30,      icon: "🥉", merits: 1 },
+  { id: "m_age2",  name: "Six Months Old",         category: "Edad",      stat: "age",               target: 180,     icon: "🥈", merits: 2 },
+  { id: "m_age3",  name: "One Year Old",           category: "Edad",      stat: "age",               target: 365,     icon: "🥇", merits: 5 },
+  { id: "m_age4",  name: "Two Years Old",          category: "Edad",      stat: "age",               target: 730,     icon: "🏅", merits: 5 },
+  { id: "m_age5",  name: "Five Years Old",         category: "Edad",      stat: "age",               target: 1825,    icon: "🏅", merits: 10 },
+];
+
+// ─── STAT DESCRIPTIONS (what to do for each stat) ───────────────────────────
+const STAT_TIPS = {
+  attackswon:        { action: "Ganar ataques contra otros jugadores", where: "Ataca jugadores desde la página de ataques o busca targets fáciles", link: "https://www.torn.com/loader.php?sid=attack&user2ID=", linkLabel: "Ir a Atacar" },
+  defendswon:        { action: "Ganar defensas cuando te atacan", where: "No puedes forzar esto directamente. Mejora tus stats de defensa en el gimnasio y equípate con buen armor", link: "https://www.torn.com/gym.php", linkLabel: "Ir al Gimnasio" },
+  criminaloffenses:  { action: "Completar crímenes exitosamente", where: "Ve a la página de crímenes y hazlos. Crímenes más difíciles dan más XP pero también cuentan como 1", link: "https://www.torn.com/crimes.php", linkLabel: "Ir a Crímenes" },
+  peoplebusted:      { action: "Sacar a jugadores de la cárcel (bust)", where: "Ve a la cárcel y busca jugadores para sacarlos. Necesitas nerve", link: "https://www.torn.com/jailview.php", linkLabel: "Ir a la Cárcel" },
+  traveltimes:       { action: "Viajar al extranjero", where: "Viaja a cualquier país. Cada viaje cuenta como 1. Puedes comprar items baratos y venderlos", link: "https://www.torn.com/travelagency.php", linkLabel: "Ir a Viajar" },
+  xantaken:          { action: "Tomar Xanax", where: "Compra Xanax en el mercado y úsalos. Dan energy extra", link: "https://www.torn.com/imarket.php#/p=shop&type=&searchname=xanax", linkLabel: "Comprar Xanax" },
+  exttaken:          { action: "Tomar Ecstasy", where: "Compra Ecstasy en el mercado y úsalos. Dan happy", link: "https://www.torn.com/imarket.php#/p=shop&type=&searchname=ecstasy", linkLabel: "Comprar Ecstasy" },
+  lsdtaken:          { action: "Tomar LSD", where: "Compra LSD en el mercado y úsalos", link: "https://www.torn.com/imarket.php#/p=shop&type=&searchname=lsd", linkLabel: "Comprar LSD" },
+  drugsused:         { action: "Usar cualquier droga (Xanax, Ecstasy, LSD, etc.)", where: "Compra drogas en el mercado y úsalas. Todas las drogas cuentan para este total", link: "https://www.torn.com/imarket.php", linkLabel: "Ir al Mercado" },
+  bountiescollected: { action: "Cobrar bounties de otros jugadores", where: "Busca jugadores con bounty y atácalos para cobrar la recompensa", link: "https://www.torn.com/bounties.php", linkLabel: "Ver Bounties" },
+  itemslooted:       { action: "Saquear items de otros jugadores al atacarlos", where: "Cuando ganas un ataque puedes saquear items del inventario del perdedor", link: "https://www.torn.com/loader.php?sid=attack&user2ID=", linkLabel: "Ir a Atacar" },
+  revives:           { action: "Revivir a otros jugadores", where: "Necesitas un Revive item o la habilidad médica. Busca jugadores hospitalizados y revívelos", link: "https://www.torn.com/hospitalview.php", linkLabel: "Ir al Hospital" },
+  trainsreceived:    { action: "Entrenar en el gimnasio", where: "Usa tu energy para entrenar stats en el gimnasio. Cada sesión de entrenamiento cuenta", link: "https://www.torn.com/gym.php", linkLabel: "Ir al Gimnasio" },
+  attacksstealthed:  { action: "Atacar en modo stealth (mugging)", where: "Selecciona 'mug' como tipo de ataque cuando atacas a otro jugador", link: "https://www.torn.com/loader.php?sid=attack&user2ID=", linkLabel: "Ir a Atacar" },
+  _networth:         { action: "Aumentar tu networth total", where: "Acumula dinero, propiedades, acciones, items valiosos. Todo suma a tu networth", link: "https://www.torn.com/properties.php", linkLabel: "Ver Propiedades" },
+  _level:            { action: "Subir de nivel", where: "Gana experiencia atacando jugadores. Ataca a jugadores de nivel similar o más alto para más XP", link: "https://www.torn.com/loader.php?sid=attack&user2ID=", linkLabel: "Ir a Atacar" },
+  refills:           { action: "Usar energy refills", where: "Compra refills con puntos o espera el refill diario gratuito si eres donador", link: "https://www.torn.com/points.php", linkLabel: "Ver Puntos" },
+  energydrinkused:   { action: "Usar energy drinks (FHCs, Cans)", where: "Compra energy drinks en el mercado. Los FHC (Feathery Hotel Coupon) son los más comunes", link: "https://www.torn.com/imarket.php#/p=shop&type=&searchname=can", linkLabel: "Comprar Energy Drinks" },
+  bestkillstreak:    { action: "Conseguir una racha de victorias sin perder", where: "Ataca y gana consecutivamente sin ser hospitalizado. Elige targets más débiles para mantener la racha", link: "https://www.torn.com/loader.php?sid=attack&user2ID=", linkLabel: "Ir a Atacar" },
+  organisedcrimes:   { action: "Participar en crímenes organizados (OC)", where: "Únete a una facción y participa en los OCs que organicen. Necesitas estar en una facción activa", link: "https://www.torn.com/factions.php", linkLabel: "Ver Facción" },
+  age:               { action: "Simplemente esperar — se basa en la edad de tu cuenta", where: "No hay nada que hacer, solo esperar. Cada día que pasa cuenta", link: null, linkLabel: null },
+  _age:              { action: "Simplemente esperar — se basa en la edad de tu cuenta", where: "No hay nada que hacer, solo esperar. Cada día que pasa cuenta", link: null, linkLabel: null },
+  hospitalized:      { action: "Hospitalizar a otros jugadores al atacarlos", where: "Gana ataques contra otros jugadores. La mayoría de victorias resultan en hospitalización", link: "https://www.torn.com/loader.php?sid=attack&user2ID=", linkLabel: "Ir a Atacar" },
+  useractivity:      { action: "Estar activo en Torn (usar items, hacer acciones)", where: "Simplemente juega activamente — usa items, entrena, ataca, etc.", link: "https://www.torn.com/", linkLabel: "Ir a Torn" },
+  itemsbought:       { action: "Comprar items en el mercado", where: "Compra cualquier item en el mercado. Cada compra cuenta", link: "https://www.torn.com/imarket.php", linkLabel: "Ir al Mercado" },
+};
+
+// Calculate combined honor + medal progress from personalstats + extra data
+const calcAllProgress = (ps, networth, level, age) => {
+  const getStat = (stat) => {
+    if (stat === "_networth") return networth || 0;
+    if (stat === "_level") return level || 0;
+    if (stat === "age" || stat === "_age") return age || 0;
+    if (stat === "drugsused") {
+      return (ps?.xantaken ?? 0) + (ps?.exttaken ?? 0) + (ps?.lsdtaken ?? 0) +
+             (ps?.kettaken ?? 0) + (ps?.opitaken ?? 0) + (ps?.shrtaken ?? 0) +
+             (ps?.spetaken ?? 0) + (ps?.pcptaken ?? 0) + (ps?.vicodintaken ?? 0);
+    }
+    return ps?.[stat] ?? 0;
+  };
+
+  const mapItem = (h, type) => {
+    const current = getStat(h.stat);
+    const progress = Math.min((current / h.target) * 100, 100);
+    const remaining = Math.max(h.target - current, 0);
+    const completed = progress >= 100;
+    return { ...h, type, current, progress, remaining, completed };
+  };
+
+  const honors = HONORS_DB.map(h => mapItem(h, "honor"));
+  const medals = MEDALS_DB.map(m => mapItem(m, "medal"));
+
+  return [...honors, ...medals].sort((a, b) => {
+    if (a.completed !== b.completed) return a.completed ? 1 : -1;
+    return b.progress - a.progress;
+  });
+};
 
 // ─── QUICK LINKS ────────────────────────────────────────────────────────────
 const QUICK_LINKS = [
@@ -330,20 +624,220 @@ const getGymStrategy = (stats, activeGymId, happy) => {
   return { focus, reason, tips, ratioType, gym, gymName, specialists, accessibleSpecialists, bestDotStat };
 };
 
-// ─── TRAVEL PROFIT DATA ─────────────────────────────────────────────────────
-const TRAVEL_ITEMS = [
-  { destination: "Mexico", items: ["Feathery Hotel Coupon", "Bottle of Tequila"], flightTime: 26, profitRange: "50K-200K" },
-  { destination: "Cayman Islands", items: ["Gold Ring", "Pearl Necklace"], flightTime: 35, profitRange: "100K-400K" },
-  { destination: "Canada", items: ["Maple Syrup", "Fur Coat"], flightTime: 41, profitRange: "150K-500K" },
-  { destination: "Hawaii", items: ["Coconut", "Hawaiian Shirt"], flightTime: 134, profitRange: "200K-600K" },
-  { destination: "UK", items: ["Crumpets", "Tea"], flightTime: 159, profitRange: "250K-700K" },
-  { destination: "Argentina", items: ["Yerba Mate", "Emerald"], flightTime: 167, profitRange: "300K-1M" },
-  { destination: "Switzerland", items: ["Swiss Army Knife", "Watch"], flightTime: 175, profitRange: "400K-1.5M" },
-  { destination: "Japan", items: ["Katana", "Sake"], flightTime: 225, profitRange: "500K-2M" },
-  { destination: "China", items: ["Fireworks", "Dragon Figurine"], flightTime: 242, profitRange: "600K-2.5M" },
-  { destination: "UAE", items: ["Gold Plated AK-47", "Camel"], flightTime: 242, profitRange: "800K-5M" },
-  { destination: "South Africa", items: ["Diamond", "Krugerrand"], flightTime: 267, profitRange: "1M-8M" },
+// ─── TRAVEL PROFIT DATA (ULTRA-OPTIMIZED) ───────────────────────────────────
+// Each destination has: standard items (buy cheap abroad, sell in Torn), plushie, flower
+// buyPrice = approximate cost abroad per unit, itemId = Torn item ID for market lookup
+// flightTime in minutes (one way), roundTrip = flightTime * 2
+const TRAVEL_DATA = [
+  {
+    destination: "Mexico", flag: "🇲🇽", flightTime: 26, nurseFee: 1,
+    items: [
+      { name: "Feathery Hotel Coupon", id: 364, buyPrice: 252, category: "standard" },
+      { name: "Bottle of Tequila", id: 366, buyPrice: 135, category: "standard" },
+    ],
+    plushie: { name: "Sheep Plushie", id: 273, buyPrice: 100 },
+    flower: { name: "Dahlia", id: 260, buyPrice: 100 },
+  },
+  {
+    destination: "Cayman Islands", flag: "🇰🇾", flightTime: 35, nurseFee: 10,
+    items: [
+      { name: "Pearl Necklace", id: 367, buyPrice: 450, category: "standard" },
+      { name: "Gold Ring", id: 368, buyPrice: 600, category: "standard" },
+    ],
+    plushie: { name: "Nessie Plushie", id: 274, buyPrice: 100 },
+    flower: { name: "Banana Orchid", id: 261, buyPrice: 100 },
+  },
+  {
+    destination: "Canada", flag: "🇨🇦", flightTime: 41, nurseFee: 10,
+    items: [
+      { name: "Maple Syrup", id: 369, buyPrice: 500, category: "standard" },
+      { name: "Fur Coat", id: 370, buyPrice: 990, category: "standard" },
+    ],
+    plushie: { name: "Wolverine Plushie", id: 275, buyPrice: 100 },
+    flower: { name: "Crocus", id: 262, buyPrice: 100 },
+  },
+  {
+    destination: "Hawaii", flag: "🇺🇸", flightTime: 134, nurseFee: 10,
+    items: [
+      { name: "Hawaiian Shirt", id: 371, buyPrice: 250, category: "standard" },
+      { name: "Coconut", id: 372, buyPrice: 100, category: "standard" },
+    ],
+    plushie: { name: "Stingray Plushie", id: 276, buyPrice: 100 },
+    flower: { name: "Orchid", id: 263, buyPrice: 100 },
+  },
+  {
+    destination: "United Kingdom", flag: "🇬🇧", flightTime: 159, nurseFee: 10,
+    items: [
+      { name: "Crumpets", id: 373, buyPrice: 150, category: "standard" },
+      { name: "Tea", id: 374, buyPrice: 75, category: "standard" },
+    ],
+    plushie: { name: "Kitten Plushie", id: 277, buyPrice: 100 },
+    flower: { name: "Heather", id: 264, buyPrice: 100 },
+  },
+  {
+    destination: "Argentina", flag: "🇦🇷", flightTime: 167, nurseFee: 10,
+    items: [
+      { name: "Yerba Mate", id: 375, buyPrice: 350, category: "standard" },
+      { name: "Emerald", id: 376, buyPrice: 2000, category: "standard" },
+    ],
+    plushie: { name: "Jaguar Plushie", id: 278, buyPrice: 100 },
+    flower: { name: "Ceibo Flower", id: 265, buyPrice: 100 },
+  },
+  {
+    destination: "Switzerland", flag: "🇨🇭", flightTime: 175, nurseFee: 10,
+    items: [
+      { name: "Swiss Army Knife", id: 377, buyPrice: 1500, category: "standard" },
+      { name: "Swiss Watch", id: 378, buyPrice: 3250, category: "standard" },
+    ],
+    plushie: { name: "Chamois Plushie", id: 279, buyPrice: 100 },
+    flower: { name: "Edelweiss", id: 266, buyPrice: 100 },
+  },
+  {
+    destination: "Japan", flag: "🇯🇵", flightTime: 225, nurseFee: 10,
+    items: [
+      { name: "Katana", id: 379, buyPrice: 3000, category: "standard" },
+      { name: "Sake", id: 380, buyPrice: 500, category: "standard" },
+    ],
+    plushie: { name: "Monkey Plushie", id: 281, buyPrice: 100 },
+    flower: { name: "Cherry Blossom", id: 267, buyPrice: 100 },
+  },
+  {
+    destination: "China", flag: "🇨🇳", flightTime: 242, nurseFee: 10,
+    items: [
+      { name: "Fireworks", id: 383, buyPrice: 1500, category: "standard" },
+      { name: "Dragon Figurine", id: 384, buyPrice: 5000, category: "standard" },
+    ],
+    plushie: { name: "Panda Plushie", id: 282, buyPrice: 100 },
+    flower: { name: "Peony", id: 268, buyPrice: 100 },
+  },
+  {
+    destination: "UAE", flag: "🇦🇪", flightTime: 242, nurseFee: 10,
+    items: [
+      { name: "Gold Plated AK-47", id: 385, buyPrice: 5000, category: "standard" },
+      { name: "Camel", id: 386, buyPrice: 3250, category: "standard" },
+    ],
+    plushie: { name: "Camel Plushie", id: 618, buyPrice: 100 },
+    flower: { name: "Tribulus Omanense", id: 269, buyPrice: 100 },
+  },
+  {
+    destination: "South Africa", flag: "🇿🇦", flightTime: 267, nurseFee: 10,
+    items: [
+      { name: "Diamond", id: 387, buyPrice: 10000, category: "standard" },
+      { name: "Krugerrand", id: 388, buyPrice: 5000, category: "standard" },
+    ],
+    plushie: { name: "Lion Plushie", id: 280, buyPrice: 100 },
+    flower: { name: "African Violet", id: 270, buyPrice: 100 },
+  },
 ];
+
+// Travel time modifiers
+const TICKET_TYPES = [
+  { label: "Standard", modifier: 1.0, icon: "🎫" },
+  { label: "Business Class", modifier: 0.7, icon: "💼" },
+  { label: "First Class", modifier: 0.5, icon: "👑" },
+  { label: "Airstrip + Standard", modifier: 0.7, icon: "🛩️" },
+  { label: "Airstrip + Business", modifier: 0.49, icon: "🛩️💼" },
+  { label: "Airstrip + First", modifier: 0.35, icon: "🛩️👑" },
+  { label: "WLT (Private)", modifier: 0.0, icon: "⚡" },
+];
+
+// YATA country code mapping
+const YATA_COUNTRY_CODES = {
+  "Mexico": "mex", "Cayman Islands": "cay", "Canada": "can", "Hawaii": "haw",
+  "United Kingdom": "uni", "Argentina": "arg", "Switzerland": "swi",
+  "Japan": "jap", "China": "chi", "UAE": "uae", "South Africa": "sou",
+};
+
+// Calculate travel profits with real-time market data + foreign stock
+const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, droqsData) => {
+  if (!allItems) return TRAVEL_DATA.map(d => ({ ...d, profits: null, bestCombo: null, profitPerHour: 0 }));
+
+  const { ticketIndex, carrySlots } = travelConfig;
+  const ticketMod = TICKET_TYPES[ticketIndex]?.modifier ?? 1.0;
+
+  return TRAVEL_DATA.map(dest => {
+    // Get YATA stock for this destination
+    const yataCode = YATA_COUNTRY_CODES[dest.destination];
+    const yataStock = foreignStock?.[yataCode]?.stocks || [];
+    const yataUpdate = foreignStock?.[yataCode]?.update || null;
+
+    // Get market values for all items in this destination
+    const allDestItems = [
+      ...dest.items.map(it => ({ ...it, type: "item" })),
+      { ...dest.plushie, type: "plushie" },
+      { ...dest.flower, type: "flower" },
+    ].map(it => {
+      const marketItem = allItems[it.id];
+      // Use real price (from market scan) if available, otherwise market_value
+      const real = realPrices?.[it.id];
+      const sellPrice = real?.cheapest || marketItem?.market_value || 0;
+      const priceSource = real?.cheapest ? "market" : "estimate";
+      const avgBazaar = real?.avgBazaar || sellPrice;
+      const marketListings = real?.totalListings || 0;
+
+      // Get foreign stock info from YATA
+      const stockInfo = yataStock.find(s => s.id === it.id);
+      const abroadStock = stockInfo?.quantity ?? null; // null = unknown
+      const abroadCost = stockInfo?.cost ?? it.buyPrice;
+
+      const profit = sellPrice - abroadCost;
+      return {
+        ...it, sellPrice, profit, marketName: marketItem?.name || it.name,
+        priceSource, avgBazaar, marketListings,
+        abroadStock, abroadCost, yataUpdate,
+      };
+    }).sort((a, b) => b.profit - a.profit);
+
+    // Best combo: fill carry slots allowing multiples, respecting stock limits
+    const inStockItems = allDestItems.filter(it => it.abroadStock === null || it.abroadStock > 0);
+    const bestCombo = [];
+    const stockUsed = {}; // track how many of each item we're "buying"
+    let slotsLeft = carrySlots;
+    for (const it of inStockItems) {
+      if (slotsLeft <= 0) break;
+      const available = it.abroadStock === null ? slotsLeft : Math.max(0, it.abroadStock - (stockUsed[it.id] || 0));
+      const toBuy = Math.min(slotsLeft, available);
+      if (toBuy <= 0) continue;
+      for (let n = 0; n < toBuy; n++) bestCombo.push(it);
+      stockUsed[it.id] = (stockUsed[it.id] || 0) + toBuy;
+      slotsLeft -= toBuy;
+    }
+    const totalInvestment = bestCombo.reduce((s, it) => s + it.abroadCost, 0);
+    const totalRevenue = bestCombo.reduce((s, it) => s + it.sellPrice, 0);
+    const totalProfit = totalRevenue - totalInvestment;
+
+    // Round trip time in minutes
+    const roundTripMin = Math.ceil(dest.flightTime * 2 * ticketMod);
+    const roundTripHours = roundTripMin / 60;
+    const profitPerHour = roundTripHours > 0 ? Math.round(totalProfit / roundTripHours) : 0;
+    const profitPerMin = roundTripMin > 0 ? Math.round(totalProfit / roundTripMin) : 0;
+
+    // Daily potential (assuming active play, ~16h/day)
+    const tripsPerDay = roundTripMin > 0 ? Math.floor((16 * 60) / roundTripMin) : 0;
+    const dailyProfit = tripsPerDay * totalProfit;
+
+    // Stock status summary
+    const outOfStockCount = allDestItems.filter(it => it.abroadStock === 0).length;
+    const hasStockData = allDestItems.some(it => it.abroadStock !== null);
+
+    return {
+      ...dest,
+      allDestItems,
+      bestCombo,
+      totalInvestment,
+      totalRevenue,
+      totalProfit,
+      roundTripMin,
+      profitPerHour,
+      profitPerMin,
+      tripsPerDay,
+      dailyProfit,
+      outOfStockCount,
+      hasStockData,
+      yataUpdate,
+    };
+  }).sort((a, b) => b.profitPerHour - a.profitPerHour);
+};
 
 // ─── COMPONENTS ──────────────────────────────────────────────────────────────
 
@@ -476,6 +970,125 @@ const CheckItem = ({ text, checked, onChange, sub }) => (
   </div>
 );
 
+// ─── CHAT SERVER ────────────────────────────────────────────────────────────
+const CHAT_SERVER = "http://localhost:3001";
+
+const ClaudeChat = ({ tornContext, onClose }) => {
+  const [messages, setMessages] = useState([
+    { role: "assistant", text: "Hola, soy Claude. Puedo ayudarte con estrategias de Torn City o cualquier otra cosa. Preguntame lo que quieras." },
+  ]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const messagesEndRef = useRef(null);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const sendMessage = async () => {
+    const msg = input.trim();
+    if (!msg || loading) return;
+    setInput("");
+    const updatedMessages = [...messages, { role: "user", text: msg }];
+    setMessages(updatedMessages);
+    setLoading(true);
+    try {
+      // Send conversation history (skip first greeting, limit to last 20 messages to avoid too-long prompts)
+      const history = updatedMessages.slice(1).slice(-20).filter(m => m.role === "user" || m.role === "assistant");
+      const res = await fetch(`${CHAT_SERVER}/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg, context: tornContext, history: history.slice(0, -1) }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      setMessages((prev) => [...prev, { role: "assistant", text: data.response }]);
+    } catch (e) {
+      setMessages((prev) => [...prev, { role: "error", text: `Error: ${e.message}` }]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div style={{
+      position: "fixed", bottom: 80, right: 20, width: 380, height: 520,
+      background: T.card, border: `1px solid ${T.accent}44`, borderRadius: 16,
+      display: "flex", flexDirection: "column", zIndex: 9999,
+      boxShadow: `0 8px 32px rgba(0,0,0,0.5), 0 0 20px ${T.accent}22`,
+      fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+    }}>
+      <div style={{
+        padding: "12px 16px", borderBottom: `1px solid ${T.border}`,
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        background: `linear-gradient(135deg, ${T.card}, ${T.accentDim})`, borderRadius: "16px 16px 0 0",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: T.green, boxShadow: `0 0 6px ${T.green}` }} />
+          <span style={{ fontSize: 13, fontWeight: 700, color: T.accent }}>Claude Opus 4.6</span>
+        </div>
+        <button onClick={onClose} style={{
+          background: "none", border: "none", color: T.textDim, fontSize: 18,
+          cursor: "pointer", padding: "0 4px", lineHeight: 1,
+        }}>x</button>
+      </div>
+      <div style={{
+        flex: 1, overflowY: "auto", padding: 12, display: "flex",
+        flexDirection: "column", gap: 10,
+      }}>
+        {messages.map((m, i) => (
+          <div key={i} style={{
+            alignSelf: m.role === "user" ? "flex-end" : "flex-start",
+            maxWidth: "85%", padding: "10px 14px",
+            borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+            background: m.role === "user" ? T.accentDim : m.role === "error" ? T.redDim : T.bg,
+            border: `1px solid ${m.role === "user" ? T.accent + "44" : m.role === "error" ? T.red + "44" : T.border}`,
+            color: m.role === "error" ? T.red : T.text,
+            fontSize: 12, lineHeight: 1.6, whiteSpace: "pre-wrap", wordBreak: "break-word",
+          }}>
+            {m.text}
+          </div>
+        ))}
+        {loading && (
+          <div style={{
+            alignSelf: "flex-start", padding: "10px 14px", borderRadius: "14px 14px 14px 4px",
+            background: T.bg, border: `1px solid ${T.border}`, fontSize: 12, color: T.textDim,
+          }}>
+            <span style={{ animation: "pulse 1s infinite" }}>Pensando...</span>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+      <div style={{ padding: 12, borderTop: `1px solid ${T.border}`, display: "flex", gap: 8 }}>
+        <input
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && !e.shiftKey && sendMessage()}
+          placeholder="Escribe tu mensaje..."
+          disabled={loading}
+          style={{
+            flex: 1, padding: "10px 14px", background: T.bg,
+            border: `1px solid ${T.border}`, borderRadius: 10,
+            color: T.text, fontSize: 12, outline: "none", fontFamily: "inherit",
+          }}
+        />
+        <button
+          onClick={sendMessage}
+          disabled={loading || !input.trim()}
+          style={{
+            padding: "10px 16px",
+            background: loading || !input.trim() ? T.border : `linear-gradient(135deg, ${T.accent}, #06b6d4)`,
+            border: "none", borderRadius: 10, color: T.bg,
+            fontSize: 13, fontWeight: 700, cursor: loading ? "wait" : "pointer", fontFamily: "inherit",
+          }}
+        >
+          {loading ? "..." : "->"}
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ─── MAIN APP ────────────────────────────────────────────────────────────────
 export default function TornGrowthOptimizer() {
   const [apiKey, setApiKey] = useState(() => localStorage.getItem("torn_api_key") || "");
@@ -506,6 +1119,7 @@ export default function TornGrowthOptimizer() {
   const [marketDeals, setMarketDeals] = useState([]);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState("");
+  const [selectedMerit, setSelectedMerit] = useState(null);
   const [scanPaused, setScanPaused] = useState(false);
   const scanActiveRef = useRef(false);
   const scanPausedRef = useRef(false);
@@ -514,6 +1128,120 @@ export default function TornGrowthOptimizer() {
   const [marketMinPrice, setMarketMinPrice] = useState(0);
   const marketMaxPriceRef = useRef(0);
   const marketMinPriceRef = useRef(0);
+
+  // Travel Optimizer Config
+  const [travelTicket, setTravelTicket] = useState(() => parseInt(localStorage.getItem("torn_travel_ticket") || "0", 10));
+  const [travelSlots, setTravelSlots] = useState(() => parseInt(localStorage.getItem("torn_travel_slots") || "5", 10));
+  const [travelTripsToday, setTravelTripsToday] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("torn_travel_trips") || "{}");
+      if (saved.date === new Date().toDateString()) return saved.count;
+    } catch {}
+    return 0;
+  });
+  const [travelEarningsToday, setTravelEarningsToday] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("torn_travel_earnings") || "{}");
+      if (saved.date === new Date().toDateString()) return saved.amount;
+    } catch {}
+    return 0;
+  });
+  const [travelShowAllItems, setTravelShowAllItems] = useState(false);
+  const [travelRealPrices, setTravelRealPrices] = useState({}); // { itemId: { cheapest, qty, avgBazaar } }
+  const [travelForeignStock, setTravelForeignStock] = useState(null); // YATA data { mex: { stocks: [...], update }, ... }
+  const [travelDroqsData, setTravelDroqsData] = useState(null); // DroqsDB data
+  const [travelPriceLoading, setTravelPriceLoading] = useState(false);
+  const [travelStockLoading, setTravelStockLoading] = useState(false);
+  const [travelLastPriceUpdate, setTravelLastPriceUpdate] = useState(null);
+  const [travelLastStockUpdate, setTravelLastStockUpdate] = useState(null);
+
+  // Easter Egg Hunt
+  const [eggIndex, setEggIndex] = useState(() => parseInt(localStorage.getItem("torn_egg_index") || "0", 10));
+  const [eggsFound, setEggsFound] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("torn_eggs_found") || "[]"); } catch { return []; }
+  });
+  const [eggAutoRunning, setEggAutoRunning] = useState(false);
+  const [eggAutoSpeed, setEggAutoSpeed] = useState(10);
+  const [eggFound, setEggFound] = useState(false);
+  const eggAutoRef = useRef(false);
+  const eggIntervalRef = useRef(null);
+  const eggWindowRef = useRef(null);
+
+  // Listen for egg found messages from the Torn tab (sent by our userscript)
+  useEffect(() => {
+    const handleMessage = (event) => {
+      if (event.data?.type === 'EGG_FOUND') {
+        // Pause auto-navigation
+        if (eggAutoRef.current) {
+          eggAutoRef.current = false;
+          setEggAutoRunning(false);
+          if (eggIntervalRef.current) clearInterval(eggIntervalRef.current);
+        }
+        setEggFound(true);
+        // Play sound in our app too
+        playAlert();
+        setTimeout(() => playAlert(), 1000);
+        setTimeout(() => playAlert(), 2000);
+        // Auto-register egg
+        setEggIndex(prev => {
+          const pageName = EGG_PAGES[prev] || "unknown";
+          const entry = { page: pageName, time: new Date().toLocaleString(), index: prev, url: event.data.page };
+          setEggsFound(old => {
+            const updated = [...old, entry];
+            localStorage.setItem("torn_eggs_found", JSON.stringify(updated));
+            return updated;
+          });
+          return prev;
+        });
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  const EGG_PAGES = ["", "index.php","city.php","jobs.php","gym.php","properties.php","page.php?sid=education",
+    "crimes.php","loader.php?sid=missions","newspaper.php","jailview.php","hospitalview.php",
+    "casino.php","page.php?sid=hof","factions.php","competition.php","page.php?sid=list&type=friends",
+    "page.php?sid=list&type=enemies","page.php?sid=list&type=targets","messages.php","page.php?sid=events",
+    "page.php?sid=awards","page.php?sid=points","rules.php","staff.php","credits.php","citystats.php",
+    "committee.php","bank.php","donator.php","item.php","page.php?sid=stocks","fans.php","museum.php",
+    "loader.php?sid=racing","church.php","dump.php","loan.php","page.php?sid=travel","amarket.php",
+    "bigalgunshop.php","shops.php?step=bitsnbobs","shops.php?step=cyberforce","shops.php?step=docks",
+    "shops.php?step=jewelry","shops.php?step=nikeh","shops.php?step=pawnshop","shops.php?step=pharmacy",
+    "pmarket.php","shops.php?step=postoffice","shops.php?step=super","shops.php?step=candy",
+    "shops.php?step=clothes","shops.php?step=recyclingcenter","shops.php?step=printstore",
+    "page.php?sid=ItemMarket","estateagents.php","bazaar.php?userId=1","page.php?sid=bazaar",
+    "calendar.php","token_shop.php","freebies.php","bringafriend.php","comics.php","archives.php",
+    "joblist.php","newspaper_class.php","personals.php","profiles.php?XID=1","newspaper.php#/archive",
+    "bounties.php","usersonline.php","page.php?sid=ammo","playerreport.php","page.php?sid=itemsMods",
+    "displaycase.php","trade.php","crimes.php?step=criminalrecords","page.php?sid=crimesRecord",
+    "index.php?page=fortune","page.php?sid=bunker","church.php?step=proposals","messageinc.php",
+    "preferences.php","page.php?sid=gallery&XID=1","personalstats.php?ID=1",
+    "properties.php?step=rentalmarket","properties.php?step=sellingmarket","forums.php",
+    "page.php?sid=slots","page.php?sid=roulette","page.php?sid=highlow","page.php?sid=keno",
+    "page.php?sid=craps","page.php?sid=bookie","page.php?sid=lottery","page.php?sid=blackjack",
+    "page.php?sid=holdem","page.php?sid=russianRoulette","page.php?sid=spinTheWheel",
+    "page.php?sid=slotsStats","page.php?sid=rouletteStatistics","page.php?sid=highlowStats",
+    "page.php?sid=kenoStatistics","page.php?sid=crapsStats","page.php?sid=blackjackStatistics",
+    "page.php?sid=holdemStats","page.php?sid=russianRouletteStatistics",
+    "factions.php?step=your#/tab=crimes","factions.php?step=your#/tab=rank",
+    "factions.php?step=your#/tab=controls","factions.php?step=your#/tab=info",
+    "factions.php?step=your#/tab=upgrades","factions.php?step=your#/tab=armoury",
+    "companies.php","itemuseparcel.php","index.php?page=rehab","index.php?page=people",
+    "page.php?sid=UserList","index.php?page=hunting","donatordone.php","revive.php","pc.php",
+    "loader.php?sid=crimes","loader.php?sid=crimes#/searchforcash","loader.php?sid=crimes#/bootlegging",
+    "loader.php?sid=crimes#/graffiti","loader.php?sid=crimes#/shoplifting",
+    "loader.php?sid=crimes#/pickpocketing","loader.php?sid=crimes#/cardskimming",
+    "loader.php?sid=crimes#/burglary","loader.php?sid=crimes#/hustling",
+    "loader.php?sid=crimes#/disposal","loader.php?sid=crimes#/cracking",
+    "loader.php?sid=crimes#/forgery","loader.php?sid=crimes#/scamming",
+    "page.php?sid=crimes#/arson","page.php?sid=keepsakes","page.php?sid=crimes2","authenticate.php",
+  ];
+
+  // Real Torn Honors & Medals
+  const [tornHonors, setTornHonors] = useState(null);
+  const [tornMedals, setTornMedals] = useState(null);
+  const [stockPrices, setStockPrices] = useState({});
 
   // Targets
   const [targets, setTargets] = useState([]);
@@ -524,6 +1252,38 @@ export default function TornGrowthOptimizer() {
   const targetActiveRef = useRef(false);
   const [targetMaxLevel, setTargetMaxLevel] = useState(10);
   const [targetScanned, setTargetScanned] = useState(0);
+
+  // Claude Chat
+  const [chatOpen, setChatOpen] = useState(false);
+  const [serverOnline, setServerOnline] = useState(false);
+  const [serverStarting, setServerStarting] = useState(false);
+  const healthRef = useRef(null);
+
+  useEffect(() => {
+    const checkHealth = async () => {
+      try {
+        const res = await fetch(`${CHAT_SERVER}/health`, { signal: AbortSignal.timeout(2000) });
+        const d = await res.json();
+        setServerOnline(d.status === "ok");
+      } catch {
+        setServerOnline(false);
+      }
+    };
+    checkHealth();
+    healthRef.current = setInterval(checkHealth, 5000);
+    return () => clearInterval(healthRef.current);
+  }, []);
+
+  const toggleServer = async () => {
+    if (serverOnline) {
+      try { await fetch(`${CHAT_SERVER}/shutdown`); } catch {}
+      setServerOnline(false);
+      setChatOpen(false);
+    } else {
+      setServerStarting(true);
+      setTimeout(() => setServerStarting(false), 6000);
+    }
+  };
 
   // Save checklist to localStorage
   useEffect(() => {
@@ -536,7 +1296,7 @@ export default function TornGrowthOptimizer() {
     setError("");
     try {
       const res = await fetch(
-        `${API_BASE}/user/?selections=profile,bars,battlestats,cooldowns,travel,money,gym,crimes,education,networth,personalstats&key=${key}`
+        `${API_BASE}/user/?selections=profile,bars,battlestats,cooldowns,travel,money,gym,crimes,education,networth,personalstats,merits,honors,medals,stocks&key=${key}`
       );
       const json = await res.json();
       if (json.error) throw new Error(json.error.error || "API Error");
@@ -549,11 +1309,39 @@ export default function TornGrowthOptimizer() {
     }
   }, []);
 
+  // Fetch real Torn honors & medals definitions + stock prices
+  const fetchTornAwards = useCallback(async (key) => {
+    if (!key) return;
+    try {
+      const [honorsRes, medalsRes, stocksRes] = await Promise.all([
+        fetch(`${API_BASE}/torn/?selections=honors&key=${key}`),
+        fetch(`${API_BASE}/torn/?selections=medals&key=${key}`),
+        fetch(`${API_BASE}/torn/?selections=stocks&key=${key}`),
+      ]);
+      const honorsJson = await honorsRes.json();
+      const medalsJson = await medalsRes.json();
+      const stocksJson = await stocksRes.json();
+      if (honorsJson.honors) setTornHonors(honorsJson.honors);
+      if (medalsJson.medals) setTornMedals(medalsJson.medals);
+      if (stocksJson.stocks) {
+        const prices = {};
+        Object.entries(stocksJson.stocks).forEach(([id, s]) => {
+          prices[Number(id)] = { name: s.name, acronym: s.acronym, current_price: s.current_price, market_cap: s.market_cap };
+        });
+        setStockPrices(prices);
+      }
+    } catch (e) {
+      console.error("Error fetching Torn awards:", e);
+    }
+  }, []);
+
+  // Fetch awards when API key is set
+  useEffect(() => {
+    if (apiKey) fetchTornAwards(apiKey);
+  }, [apiKey, fetchTornAwards]);
 
   // Scan ALL categories in one pass
   const scanAllMarkets = useCallback(async (items, key) => {
-    if (scanActiveRef.current) return;
-    scanActiveRef.current = true;
     setScanning(true);
 
     const SCAN_TYPES = ["Plushie", "Flower", "Drug", "Booster", "Temporary", "Melee", "Primary", "Secondary", "Armor", "Clothing", "Jewelry"];
@@ -631,9 +1419,7 @@ export default function TornGrowthOptimizer() {
 
     marketResultsRef.current.sort((a, b) => b.discount - a.discount);
     setMarketDeals([...marketResultsRef.current]);
-    setScanning(false);
     setScanProgress("");
-    scanActiveRef.current = false;
   }, []);
 
   const scanTargets = useCallback(async (key, maxLvl) => {
@@ -697,41 +1483,122 @@ export default function TornGrowthOptimizer() {
     targetActiveRef.current = false;
   }, []);
 
-  // Auto-load items + start continuous scan loop
+  // Auto-load items (but don't start scanning automatically)
   useEffect(() => {
     if (!apiKey) return;
-    let cancelled = false;
-
-    const startAutoScan = async () => {
-      // 1. Load all items
-      let items = allItems;
-      if (!items) {
+    const loadItems = async () => {
+      if (!allItems) {
         try {
           const res = await fetch(`${API_BASE}/torn/?selections=items&key=${apiKey}`);
           const json = await res.json();
-          if (json.items) {
-            items = json.items;
-            setAllItems(json.items);
-          }
+          if (json.items) setAllItems(json.items);
         } catch {}
       }
-      if (!items || cancelled) return;
+    };
+    loadItems();
+  }, [apiKey]);
 
-      // 2. Continuous scan loop
-      while (!cancelled) {
-        // Wait while paused
-        while (scanPausedRef.current && !cancelled) {
+  // Manual scan loop - only runs when user clicks Start
+  const startMarketScan = useCallback(async () => {
+    if (scanActiveRef.current) return;
+    let items = allItems;
+    if (!items) {
+      try {
+        const res = await fetch(`${API_BASE}/torn/?selections=items&key=${apiKey}`);
+        const json = await res.json();
+        if (json.items) { items = json.items; setAllItems(json.items); }
+      } catch {}
+    }
+    if (!items) return;
+
+    scanActiveRef.current = true;
+    const loop = async () => {
+      while (scanActiveRef.current) {
+        while (scanPausedRef.current && scanActiveRef.current) {
           await new Promise(r => setTimeout(r, 1000));
         }
-        if (cancelled) break;
+        if (!scanActiveRef.current) break;
         await scanAllMarkets(items, apiKey);
         await new Promise(r => setTimeout(r, 30000));
       }
     };
+    loop();
+  }, [apiKey, allItems, scanAllMarkets]);
 
-    startAutoScan();
-    return () => { cancelled = true; scanActiveRef.current = false; };
-  }, [apiKey]);
+  const stopMarketScan = useCallback(() => {
+    scanActiveRef.current = false;
+    setScanning(false);
+    setScanProgress("Detenido");
+  }, []);
+
+  // ─── TRAVEL: Fetch real market prices for travel items ──────────────────
+  const fetchTravelRealPrices = useCallback(async () => {
+    if (!apiKey) return;
+    setTravelPriceLoading(true);
+    try {
+      // Collect all unique item IDs from travel data
+      const itemIds = [];
+      TRAVEL_DATA.forEach(d => {
+        d.items.forEach(it => itemIds.push(it.id));
+        itemIds.push(d.plushie.id, d.flower.id);
+      });
+      const uniqueIds = [...new Set(itemIds)];
+
+      const prices = { ...travelRealPrices };
+      // Fetch in batches of 3 to avoid rate limiting
+      for (let i = 0; i < uniqueIds.length; i += 3) {
+        const batch = uniqueIds.slice(i, i + 3);
+        const results = await Promise.all(
+          batch.map(async (id) => {
+            try {
+              const res = await fetch(`${API_BASE}/v2/market/${id}/itemmarket?key=${apiKey}`);
+              const json = await res.json();
+              if (json.error) return { id, error: true };
+              const listings = json.itemmarket || [];
+              if (listings.length === 0) return { id, cheapest: 0, qty: 0 };
+              const cheapest = listings[0]?.price ?? 0;
+              const cheapQty = listings.filter(l => l.price === cheapest).reduce((s, l) => s + (l.quantity || 1), 0);
+              // Avg from top 10 listings for bazaar estimate
+              const top10 = listings.slice(0, 10);
+              const avgBazaar = top10.length > 0 ? Math.round(top10.reduce((s, l) => s + l.price, 0) / top10.length) : cheapest;
+              return { id, cheapest, qty: cheapQty, avgBazaar, totalListings: listings.length };
+            } catch { return { id, error: true }; }
+          })
+        );
+        results.forEach(r => {
+          if (!r.error) prices[r.id] = { cheapest: r.cheapest, qty: r.qty, avgBazaar: r.avgBazaar, totalListings: r.totalListings };
+        });
+        // Small delay between batches to respect rate limits
+        if (i + 3 < uniqueIds.length) await new Promise(r => setTimeout(r, 1500));
+      }
+      setTravelRealPrices(prices);
+      setTravelLastPriceUpdate(Date.now());
+    } catch (e) { console.error("Travel price fetch error:", e); }
+    setTravelPriceLoading(false);
+  }, [apiKey, travelRealPrices]);
+
+  // ─── TRAVEL: Fetch foreign stock from YATA ────────────────────────────
+  const fetchForeignStock = useCallback(async () => {
+    setTravelStockLoading(true);
+    try {
+      // Try DroqsDB first (better data, restock predictions)
+      const droqsRes = await fetch("https://droqsdb.com/api/public/v1/export");
+      if (droqsRes.ok) {
+        const droqsJson = await droqsRes.json();
+        setTravelDroqsData(droqsJson);
+      }
+    } catch (e) { console.error("DroqsDB fetch error:", e); }
+    try {
+      // Also fetch YATA as fallback/complement
+      const yataRes = await fetch("https://yata.yt/api/v1/travel/export/");
+      if (yataRes.ok) {
+        const yataJson = await yataRes.json();
+        setTravelForeignStock(yataJson.stocks || null);
+      }
+    } catch (e) { console.error("YATA fetch error:", e); }
+    setTravelStockLoading(false);
+    setTravelLastStockUpdate(Date.now());
+  }, []);
 
   // Auto-fetch on apiKey change
   useEffect(() => {
@@ -741,6 +1608,17 @@ export default function TornGrowthOptimizer() {
       return () => clearInterval(intervalRef.current);
     }
   }, [apiKey, fetchData]);
+
+  // Auto-refresh travel stock (every 2 min) + real prices (every 5 min)
+  useEffect(() => {
+    if (!apiKey) return;
+    // Initial fetch on load
+    fetchForeignStock();
+    fetchTravelRealPrices();
+    const stockInterval = setInterval(fetchForeignStock, 2 * 60 * 1000);
+    const priceInterval = setInterval(fetchTravelRealPrices, 5 * 60 * 1000);
+    return () => { clearInterval(stockInterval); clearInterval(priceInterval); };
+  }, [apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Request notification permission
   useEffect(() => {
@@ -889,6 +1767,74 @@ export default function TornGrowthOptimizer() {
   const name = data?.name ?? "Player";
 
   const ps = data?.personalstats ?? {};
+  const age = data?.age ?? 0;
+
+  const tornContext = useMemo(() => {
+    if (!data) return "";
+
+    // Basic profile
+    let ctx = `Nombre: ${name}, Nivel: ${level}, Edad: ${age} días, ` +
+      `Stats - STR: ${fmt(data.strength)} SPD: ${fmt(data.speed)} DEF: ${fmt(data.defense)} DEX: ${fmt(data.dexterity)}, ` +
+      `Energia: ${bars.energy.current}/${bars.energy.max}, Nerve: ${bars.nerve.current}/${bars.nerve.max}, ` +
+      `Happy: ${bars.happy.current}/${bars.happy.max}, Life: ${bars.life?.current || 0}/${bars.life?.max || 0}, ` +
+      `Gym: ${GYMS[(data.active_gym || 1) - 1]?.name || "?"}, ` +
+      `Dinero: $${fmt(money)}, Networth: $${fmt(networth)}, Points: ${data.points || 0}, ` +
+      `Cooldowns - Droga: ${cooldowns.drug}s, Medical: ${cooldowns.medical}s, Booster: ${cooldowns.booster}s`;
+
+    // All personalstats
+    if (ps && Object.keys(ps).length > 0) {
+      const importantStats = [
+        "attackswon", "attackslost", "defendswon", "defendslost",
+        "criminaloffenses", "peoplebusted", "failedbusts",
+        "traveltimes", "itemsbought", "itemssent",
+        "bountiescollected", "revives", "revivesreceived",
+        "trainsreceived", "hospitalized",
+        "attacksstealthed", "organisedcrimes",
+        "xantaken", "exttaken", "lsdtaken", "kettaken",
+        "energydrinkused", "refills", "bestkillstreak",
+        "moneymugged", "largestmug",
+        "useractivity", "itemslooted",
+      ];
+      const statsStr = importantStats
+        .filter(s => ps[s] !== undefined && ps[s] > 0)
+        .map(s => `${s}: ${ps[s]}`)
+        .join(", ");
+      if (statsStr) ctx += `. PersonalStats: ${statsStr}`;
+    }
+
+    // Real honors from API
+    const userHonorIds = data?.honors_awarded || [];
+    const userMedalIds = data?.medals_awarded || [];
+    ctx += `. Honors desbloqueados: ${userHonorIds.length}, Medals desbloqueados: ${userMedalIds.length}`;
+    if (tornHonors) {
+      const totalH = Object.keys(tornHonors).length;
+      const totalM = tornMedals ? Object.keys(tornMedals).length : 0;
+      ctx += ` de ${totalH} honors y ${totalM} medals totales en el juego`;
+      // List some unearned honors with descriptions so Claude can recommend
+      const unearned = Object.entries(tornHonors)
+        .filter(([id]) => !userHonorIds.includes(Number(id)))
+        .filter(([, h]) => h.description)
+        .slice(0, 20)
+        .map(([id, h]) => `${h.name}: ${h.description}`)
+        .join("; ");
+      if (unearned) ctx += `. Algunos honors NO conseguidos: ${unearned}`;
+    }
+    ctx += `. IMPORTANTE: solo menciona honors y medals que existan realmente en Torn City. NO inventes honors basándote en personalstats`;
+
+    // Merits invested
+    if (data.merits) {
+      const invested = Object.entries(data.merits).filter(([, v]) => v > 0).map(([k, v]) => `${k}: ${v}`).join(", ");
+      if (invested) ctx += `. Merits invertidos: ${invested}`;
+    }
+
+    // Travel status
+    if (traveling) ctx += `. Viajando a: ${travelDest} (${travelTime}s restantes)`;
+
+    // Education
+    if (data.education_current) ctx += `. Educación actual: curso ${data.education_current}`;
+
+    return ctx;
+  }, [data, name, level, age, bars, money, networth, ps, cooldowns, traveling, travelDest, travelTime]);
 
   // ─── PRIORITY ACTIONS ──────────────────────────────────────────────────────
   const priorityActions = [];
@@ -979,7 +1925,9 @@ export default function TornGrowthOptimizer() {
     { id: "market", icon: "🏪", label: "Market" },
     { id: "stats", icon: "📈", label: "Stats" },
     { id: "targets", icon: "🎯", label: "Targets" },
+    { id: "merits", icon: "🏅", label: "Merits" },
     { id: "checklist", icon: "✅", label: "Diario" },
+    { id: "eggHunt", icon: "🥚", label: "Easter Eggs" },
   ];
 
   return (
@@ -1095,6 +2043,122 @@ export default function TornGrowthOptimizer() {
               <StatCard icon="⚔️" title="Battle Stats" value={fmt(totalStats)} sub="Total combinado" color={T.gold} />
               <StatCard icon="🎯" title="Nivel" value={level} sub={name} color={T.purple} />
             </div>
+
+            {/* Bank Investment */}
+            {(() => {
+              const bank = data?.city_bank;
+              if (!bank || !bank.amount) return null;
+              const timeLeft = bank.time_left ?? 0;
+              return (
+                <div style={{ background: T.card, border: `1px solid ${T.green}33`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: T.green }}>🏦 Banco de Torn</div>
+                    {timeLeft > 0 && (
+                      <span style={{ fontSize: 11, fontWeight: 600, color: T.gold }}>{timeUntil(timeLeft)} restante</span>
+                    )}
+                  </div>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <div style={{ background: T.bg, borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 9, color: T.textDim, marginBottom: 2 }}>INVERTIDO</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: T.green }}>${fmt(bank.amount)}</div>
+                    </div>
+                    <div style={{ background: T.bg, borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 9, color: T.textDim, marginBottom: 2 }}>DURACIÓN</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>
+                        {timeLeft <= 0 ? <span style={{ color: T.green }}>Listo para retirar!</span> : timeUntil(timeLeft)}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
+            {/* Stocks */}
+            {(() => {
+              const stocks = data?.stocks;
+              if (!stocks || Object.keys(stocks).length === 0) return null;
+
+              let totalInvested = 0;
+              let totalValue = 0;
+              const stockList = Object.entries(stocks).map(([key, s]) => {
+                const sid = s.stock_id;
+                const priceInfo = stockPrices[sid];
+                const ticker = priceInfo?.acronym || `#${sid}`;
+                const stockName = priceInfo?.name || ticker;
+                const shares = s.total_shares || 0;
+                // Sum invested from all transactions (bought_price is per share)
+                let invested = 0;
+                if (s.transactions) {
+                  Object.values(s.transactions).forEach(tx => {
+                    invested += (tx.bought_price || 0) * (tx.shares || 0);
+                  });
+                }
+                const currentPricePerShare = priceInfo?.current_price || 0;
+                const value = shares * currentPricePerShare;
+                const profit = value - invested;
+                const profitPct = invested > 0 ? ((profit / invested) * 100) : 0;
+                totalInvested += invested;
+                totalValue += value;
+                return { id: key, sid, ticker, stockName, shares, invested, value, profit, profitPct, buyPrice: invested / (shares || 1), currentPrice: currentPricePerShare };
+              }).filter(s => s.shares > 0);
+
+              if (stockList.length === 0) return null;
+              const totalProfit = totalValue - totalInvested;
+              const totalProfitPct = totalInvested > 0 ? ((totalProfit / totalInvested) * 100) : 0;
+
+              return (
+                <div style={{ background: T.card, border: `1px solid ${T.accent}33`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: T.accent, marginBottom: 10 }}>📈 Stocks</div>
+
+                  {/* Totals */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 12 }}>
+                    <div style={{ background: T.bg, borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 9, color: T.textDim, marginBottom: 2 }}>INVERTIDO</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: T.text }}>${fmt(totalInvested)}</div>
+                    </div>
+                    <div style={{ background: T.bg, borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 9, color: T.textDim, marginBottom: 2 }}>VALOR ACTUAL</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: T.accent }}>${fmt(totalValue)}</div>
+                    </div>
+                    <div style={{ background: T.bg, borderRadius: 8, padding: 10 }}>
+                      <div style={{ fontSize: 9, color: T.textDim, marginBottom: 2 }}>BENEFICIO</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: totalProfit >= 0 ? T.green : T.red }}>
+                        {totalProfit >= 0 ? "+" : ""}${fmt(Math.abs(totalProfit))}
+                      </div>
+                      <div style={{ fontSize: 9, color: totalProfit >= 0 ? T.green : T.red }}>
+                        {totalProfitPct >= 0 ? "+" : ""}{totalProfitPct.toFixed(1)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Individual stocks */}
+                  {stockList.map(s => (
+                    <div key={s.id} style={{
+                      padding: "10px 10px", borderBottom: `1px solid ${T.border}22`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <span style={{ fontSize: 13, fontWeight: 800, color: T.accent }}>{s.ticker}</span>
+                          <span style={{ fontSize: 10, color: T.textDim }}>{s.stockName}</span>
+                        </div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: s.profit >= 0 ? T.green : T.red }}>
+                          {s.profit >= 0 ? "+" : ""}${fmt(Math.abs(s.profit))}
+                          <span style={{ fontSize: 9, marginLeft: 4 }}>({s.profitPct >= 0 ? "+" : ""}{s.profitPct.toFixed(1)}%)</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: T.textDim }}>
+                        <span>{fmt(s.shares)} acciones · Compra: ${s.buyPrice.toFixed(2)}/acc</span>
+                        <span>Actual: ${s.currentPrice.toFixed(2)}/acc</span>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: T.textDim, marginTop: 2 }}>
+                        <span>Invertido: ${fmt(s.invested)}</span>
+                        <span>Valor: <span style={{ color: T.accent, fontWeight: 700 }}>${fmt(s.value)}</span></span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
 
             {/* Cooldowns */}
             <SectionHeader icon="⏱️" title="Cooldowns" />
@@ -1548,84 +2612,470 @@ export default function TornGrowthOptimizer() {
           </>
         )}
 
-        {/* ═══ TRAVEL TAB ═══ */}
-        {tab === "travel" && (
-          <>
-            <SectionHeader icon="✈️" title="Monitor de Viajes" badge="PROFIT" />
+        {/* ═══ TRAVEL TAB (ULTRA-OPTIMIZED) ═══ */}
+        {tab === "travel" && (() => {
+          const travelConfig = { ticketIndex: travelTicket, carrySlots: travelSlots };
+          const travelResults = calcTravelProfits(allItems, travelConfig, travelRealPrices, travelForeignStock, travelDroqsData);
+          const bestRoute = travelResults[0];
+          const ticketInfo = TICKET_TYPES[travelTicket] || TICKET_TYPES[0];
 
+          return (
+          <>
+            <SectionHeader icon="✈️" title="Centro de Viajes" badge="ULTRA PROFIT" />
+
+            {/* ── Price & Stock Refresh Bar ── */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+              <button
+                onClick={fetchTravelRealPrices}
+                disabled={travelPriceLoading}
+                style={{
+                  flex: 1, padding: "10px", background: travelPriceLoading ? T.card : T.accentDim,
+                  border: `1px solid ${travelPriceLoading ? T.border : T.accent + "55"}`,
+                  borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: travelPriceLoading ? "wait" : "pointer",
+                  fontFamily: "inherit", color: travelPriceLoading ? T.textMuted : T.accent,
+                }}
+              >
+                {travelPriceLoading ? "Escaneando precios..." : "Actualizar Precios Reales"}
+              </button>
+              <button
+                onClick={fetchForeignStock}
+                disabled={travelStockLoading}
+                style={{
+                  flex: 1, padding: "10px", background: travelStockLoading ? T.card : T.purpleDim,
+                  border: `1px solid ${travelStockLoading ? T.border : T.purple + "55"}`,
+                  borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: travelStockLoading ? "wait" : "pointer",
+                  fontFamily: "inherit", color: travelStockLoading ? T.textMuted : T.purple,
+                }}
+              >
+                {travelStockLoading ? "Cargando stock..." : "Actualizar Stock Extranjero"}
+              </button>
+            </div>
+
+            {/* ── Data Source Status ── */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16, fontSize: 10 }}>
+              <div style={{ flex: 1, padding: "6px 10px", background: T.card, border: `1px solid ${T.border}`, borderRadius: 6, textAlign: "center" }}>
+                <span style={{ color: T.textMuted }}>Precios: </span>
+                <span style={{ color: travelLastPriceUpdate ? T.green : T.textMuted }}>
+                  {travelLastPriceUpdate
+                    ? `Real (Market) — ${new Date(travelLastPriceUpdate).toLocaleTimeString()}`
+                    : Object.keys(travelRealPrices).length > 0 ? "Cargados" : "Estimados (market_value)"
+                  }
+                </span>
+              </div>
+              <div style={{ flex: 1, padding: "6px 10px", background: T.card, border: `1px solid ${T.border}`, borderRadius: 6, textAlign: "center" }}>
+                <span style={{ color: T.textMuted }}>Stock: </span>
+                <span style={{ color: travelLastStockUpdate ? T.green : T.textMuted }}>
+                  {travelLastStockUpdate
+                    ? `YATA + DroqsDB — ${new Date(travelLastStockUpdate).toLocaleTimeString()}`
+                    : "Sin datos (pulsa actualizar)"
+                  }
+                </span>
+              </div>
+            </div>
+
+            {/* ── Flying Status ── */}
             {traveling && (
-              <div style={{ background: T.purpleDim, border: `1px solid ${T.purple}44`, borderRadius: 12, padding: 16, marginBottom: 20, textAlign: "center" }}>
-                <div style={{ fontSize: 24, marginBottom: 8 }}>✈️</div>
-                <div style={{ fontSize: 16, fontWeight: 700, color: T.purple }}>Volando a {travelDest}</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: T.text, margin: "8px 0" }}>{timeUntil(travelTime)}</div>
+              <div style={{ background: `linear-gradient(135deg, ${T.purpleDim}, ${T.card})`, border: `1px solid ${T.purple}66`, borderRadius: 12, padding: 20, marginBottom: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 32, marginBottom: 4 }}>✈️</div>
+                <div style={{ fontSize: 18, fontWeight: 700, color: T.purple }}>En vuelo a {travelDest}</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: T.text, margin: "8px 0" }}>{timeUntil(travelTime)}</div>
+                <div style={{ fontSize: 11, color: T.textDim }}>Recuerda comprar los items más rentables al llegar</div>
               </div>
             )}
 
-            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "2fr 2fr 1fr 1.5fr", padding: "10px 16px", borderBottom: `1px solid ${T.border}`, gap: 8 }}>
-                {["Destino", "Items Clave", "Vuelo", "Beneficio Est."].map((h) => (
-                  <div key={h} style={{ fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>{h}</div>
-                ))}
+            {/* ── Best Route NOW (Hero Card) ── */}
+            {bestRoute && bestRoute.totalProfit > 0 && !traveling && (
+              <div style={{
+                background: `linear-gradient(135deg, ${T.greenDim}, ${T.card})`,
+                border: `1px solid ${T.green}66`, borderRadius: 12, padding: 20, marginBottom: 16,
+              }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: T.green, textTransform: "uppercase", letterSpacing: 2, fontWeight: 600 }}>Mejor Ruta Ahora</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: T.text, marginTop: 4 }}>
+                      {bestRoute.flag} {bestRoute.destination}
+                    </div>
+                  </div>
+                  <a href="https://www.torn.com/travelagency.php" target="_blank" rel="noreferrer"
+                    style={{
+                      padding: "10px 20px", background: T.green, border: "none", borderRadius: 8,
+                      color: T.bg, fontSize: 13, fontWeight: 700, cursor: "pointer", textDecoration: "none",
+                    }}>
+                    VIAJAR YA
+                  </a>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12 }}>
+                  {[
+                    { label: "Beneficio/Viaje", value: `$${fmt(bestRoute.totalProfit)}`, color: T.green },
+                    { label: "Beneficio/Hora", value: `$${fmt(bestRoute.profitPerHour)}`, color: T.gold },
+                    { label: "Ida y Vuelta", value: `${bestRoute.roundTripMin}min`, color: T.accent },
+                    { label: "Viajes/Día", value: `~${bestRoute.tripsPerDay}`, color: T.purple },
+                  ].map(s => (
+                    <div key={s.label} style={{ textAlign: "center" }}>
+                      <div style={{ fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: s.color, marginTop: 2 }}>{s.value}</div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{ marginTop: 12, fontSize: 11, color: T.textDim }}>
+                  Comprar: {Object.values(bestRoute.bestCombo.reduce((acc, it) => {
+                    const key = it.id;
+                    acc[key] = acc[key] || { name: it.marketName || it.name, qty: 0 };
+                    acc[key].qty++;
+                    return acc;
+                  }, {})).map(g => g.qty > 1 ? `${g.qty}x ${g.name}` : g.name).join(", ")}
+                </div>
+                {bestRoute.dailyProfit > 0 && (
+                  <div style={{ marginTop: 8, padding: "8px 12px", background: T.bg + "88", borderRadius: 8, textAlign: "center" }}>
+                    <span style={{ fontSize: 11, color: T.textMuted }}>Potencial diario (16h activo): </span>
+                    <span style={{ fontSize: 14, fontWeight: 800, color: T.gold }}>${fmt(bestRoute.dailyProfit)}</span>
+                  </div>
+                )}
               </div>
-              {TRAVEL_ITEMS.map((t, i) => (
-                <div
-                  key={i}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "2fr 2fr 1fr 1.5fr",
-                    padding: "10px 16px",
-                    borderBottom: i < TRAVEL_ITEMS.length - 1 ? `1px solid ${T.border}` : "none",
-                    gap: 8,
-                    alignItems: "center",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 600, color: T.text }}>{t.destination}</div>
-                  <div style={{ fontSize: 11, color: T.textDim }}>{t.items.join(", ")}</div>
-                  <div style={{ fontSize: 11, color: T.textMuted }}>{t.flightTime}m</div>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: T.green }}>${t.profitRange}</div>
+            )}
+
+            {/* ── Session Tracker ── */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
+              {[
+                { label: "Viajes Hoy", value: travelTripsToday, color: T.accent, icon: "✈️" },
+                { label: "Ganancia Hoy", value: `$${fmt(travelEarningsToday)}`, color: T.green, icon: "💰" },
+                { label: "Ticket Actual", value: ticketInfo.label, color: T.purple, icon: ticketInfo.icon },
+              ].map(s => (
+                <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, textAlign: "center" }}>
+                  <div style={{ fontSize: 18 }}>{s.icon}</div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: s.color }}>{s.value}</div>
+                  <div style={{ fontSize: 9, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1 }}>{s.label}</div>
                 </div>
               ))}
             </div>
 
-            <div style={{ marginTop: 16, background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 600, color: T.accent, marginBottom: 8 }}>💡 Pro Tips Viajes</div>
-              <div style={{ fontSize: 12, color: T.textDim, lineHeight: 1.7 }}>
-                • Lleva siempre 5 items para maximizar beneficio por viaje<br />
-                • Compra Plushies y Flowers para Mr. Duke (+merits y dinero)<br />
-                • South Africa y China tienen los mejores márgenes<br />
-                • Ahorra para Business Class Ticket (reduce tiempos de vuelo)<br />
-                • Usa el Airstrip de facción si está disponible para vuelos más rápidos<br />
-                • WLT (Working Lunch Tickets) ahorran energía de viaje
+            {/* ── Log Trip Button ── */}
+            {bestRoute && bestRoute.totalProfit > 0 && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                <button
+                  onClick={() => {
+                    const newTrips = travelTripsToday + 1;
+                    const newEarnings = travelEarningsToday + bestRoute.totalProfit;
+                    setTravelTripsToday(newTrips);
+                    setTravelEarningsToday(newEarnings);
+                    localStorage.setItem("torn_travel_trips", JSON.stringify({ date: new Date().toDateString(), count: newTrips }));
+                    localStorage.setItem("torn_travel_earnings", JSON.stringify({ date: new Date().toDateString(), amount: newEarnings }));
+                  }}
+                  style={{
+                    flex: 1, padding: "10px", background: T.greenDim, border: `1px solid ${T.green}55`,
+                    borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit", color: T.green,
+                  }}
+                >
+                  + Registrar Viaje (${fmt(bestRoute.totalProfit)} beneficio)
+                </button>
+                <button
+                  onClick={() => {
+                    setTravelTripsToday(0);
+                    setTravelEarningsToday(0);
+                    localStorage.setItem("torn_travel_trips", JSON.stringify({ date: new Date().toDateString(), count: 0 }));
+                    localStorage.setItem("torn_travel_earnings", JSON.stringify({ date: new Date().toDateString(), amount: 0 }));
+                  }}
+                  style={{
+                    padding: "10px 16px", background: T.card, border: `1px solid ${T.border}`,
+                    borderRadius: 8, fontSize: 11, cursor: "pointer", fontFamily: "inherit", color: T.textMuted,
+                  }}
+                >
+                  Reset
+                </button>
+              </div>
+            )}
+
+            {/* ── Travel Config Panel ── */}
+            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.accent, marginBottom: 12 }}>Configuración de Viaje</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Tipo de Ticket</div>
+                  <select
+                    value={travelTicket}
+                    onChange={e => {
+                      const v = parseInt(e.target.value, 10);
+                      setTravelTicket(v);
+                      localStorage.setItem("torn_travel_ticket", v);
+                    }}
+                    style={{
+                      width: "100%", padding: "8px 10px", background: T.bg, border: `1px solid ${T.border}`,
+                      borderRadius: 8, color: T.text, fontSize: 12, fontFamily: "inherit", cursor: "pointer",
+                    }}
+                  >
+                    {TICKET_TYPES.map((tt, i) => (
+                      <option key={i} value={i}>{tt.icon} {tt.label} ({Math.round((1 - tt.modifier) * 100)}% reducción)</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <div style={{ fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Slots de Carga</div>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    {[3, 4, 5, 6, 7, 8, 10].map(n => (
+                      <button
+                        key={n}
+                        onClick={() => {
+                          setTravelSlots(n);
+                          localStorage.setItem("torn_travel_slots", n);
+                        }}
+                        style={{
+                          padding: "6px 10px",
+                          background: travelSlots === n ? T.accent : T.bg,
+                          border: `1px solid ${travelSlots === n ? T.accent : T.border}`,
+                          borderRadius: 6, fontSize: 12, fontWeight: travelSlots === n ? 700 : 400,
+                          color: travelSlots === n ? T.bg : T.textDim, cursor: "pointer", fontFamily: "inherit",
+                        }}
+                      >{n}</button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* ── Ranking de Destinos (sorted by profit/hour) ── */}
+            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, overflow: "hidden", marginBottom: 16 }}>
+              <div style={{ padding: "12px 16px", borderBottom: `1px solid ${T.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: T.accent }}>Ranking de Destinos ($/hora)</div>
+                <button
+                  onClick={() => setTravelShowAllItems(!travelShowAllItems)}
+                  style={{
+                    padding: "4px 10px", background: T.bg, border: `1px solid ${T.border}`,
+                    borderRadius: 6, fontSize: 10, color: T.textDim, cursor: "pointer", fontFamily: "inherit",
+                  }}
+                >
+                  {travelShowAllItems ? "Ocultar Items" : "Ver Items"}
+                </button>
+              </div>
+              {/* Header */}
+              <div style={{ display: "grid", gridTemplateColumns: "30px 2fr 1fr 1fr 1.2fr 1.2fr", padding: "8px 16px", borderBottom: `1px solid ${T.border}`, gap: 8 }}>
+                {["#", "Destino", "Vuelo I/V", "$/Viaje", "$/Hora", "$/Día"].map(h => (
+                  <div key={h} style={{ fontSize: 9, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>{h}</div>
+                ))}
+              </div>
+              {/* Rows */}
+              {travelResults.map((dest, i) => {
+                const isTop = i === 0;
+                const hasProfit = dest.totalProfit > 0;
+                return (
+                  <div key={dest.destination}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "30px 2fr 1fr 1fr 1.2fr 1.2fr",
+                        padding: "10px 16px",
+                        borderBottom: `1px solid ${T.border}`,
+                        gap: 8,
+                        alignItems: "center",
+                        background: isTop ? T.greenDim : "transparent",
+                      }}
+                    >
+                      <div style={{ fontSize: 14, fontWeight: 800, color: isTop ? T.green : T.textMuted }}>
+                        {isTop ? "👑" : `${i + 1}`}
+                      </div>
+                      <div>
+                        <span style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{dest.flag} {dest.destination}</span>
+                        {dest.hasStockData && dest.outOfStockCount > 0 && (
+                          <span style={{ fontSize: 9, color: T.red, marginLeft: 6, fontWeight: 600 }}>
+                            {dest.outOfStockCount} agotado{dest.outOfStockCount > 1 ? "s" : ""}
+                          </span>
+                        )}
+                        {dest.hasStockData && dest.outOfStockCount === 0 && (
+                          <span style={{ fontSize: 9, color: T.green, marginLeft: 6 }}>EN STOCK</span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 11, color: T.textDim }}>{dest.roundTripMin}min</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: hasProfit ? T.green : T.textMuted }}>
+                        {hasProfit ? `$${fmt(dest.totalProfit)}` : "N/A"}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: hasProfit ? T.gold : T.textMuted }}>
+                        {hasProfit ? `$${fmt(dest.profitPerHour)}` : "N/A"}
+                      </div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: hasProfit ? T.accent : T.textMuted }}>
+                        {hasProfit ? `$${fmt(dest.dailyProfit)}` : "N/A"}
+                      </div>
+                    </div>
+                    {/* Expanded item details with stock + real prices */}
+                    {travelShowAllItems && hasProfit && (
+                      <div style={{ padding: "8px 16px 12px 46px", borderBottom: `1px solid ${T.border}`, background: T.bg + "44" }}>
+                        {/* Column headers */}
+                        <div style={{ display: "grid", gridTemplateColumns: "2.5fr 1fr 1fr 1fr 0.8fr", gap: 8, padding: "2px 0 6px", borderBottom: `1px solid ${T.border}`, marginBottom: 4 }}>
+                          {["Item", "Compra", "Venta", "Beneficio", "Stock"].map(h => (
+                            <div key={h} style={{ fontSize: 9, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>{h}</div>
+                          ))}
+                        </div>
+                        {dest.allDestItems.map((it, j) => {
+                          const comboQty = dest.bestCombo.filter(c => c.id === it.id).length;
+                          const inCombo = comboQty > 0;
+                          const outOfStock = it.abroadStock === 0;
+                          return (
+                            <div key={j} style={{
+                              display: "grid", gridTemplateColumns: "2.5fr 1fr 1fr 1fr 0.8fr",
+                              gap: 8, padding: "4px 0", fontSize: 11, alignItems: "center",
+                              opacity: outOfStock ? 0.4 : 1,
+                            }}>
+                              <div style={{ color: inCombo ? T.text : T.textMuted }}>
+                                {inCombo ? `✓${comboQty > 1 ? `x${comboQty}` : ""} ` : "  "}
+                                {it.type === "plushie" ? "🧸 " : it.type === "flower" ? "🌸 " : "📦 "}
+                                {it.marketName || it.name}
+                              </div>
+                              <div style={{ color: T.textMuted }}>
+                                ${fmt(it.abroadCost)}
+                              </div>
+                              <div>
+                                <span style={{ color: T.textDim }}>${fmt(it.sellPrice)}</span>
+                                {it.priceSource === "market" && (
+                                  <span style={{ fontSize: 8, color: T.green, marginLeft: 4 }}>REAL</span>
+                                )}
+                              </div>
+                              <div style={{ color: it.profit > 0 ? T.green : T.red, fontWeight: 600 }}>
+                                {it.profit > 0 ? "+" : ""}${fmt(it.profit)}
+                              </div>
+                              <div style={{
+                                fontSize: 10, fontWeight: 600,
+                                color: it.abroadStock === null ? T.textMuted : it.abroadStock > 0 ? T.green : T.red,
+                              }}>
+                                {it.abroadStock === null ? "—" : it.abroadStock > 0 ? `${it.abroadStock}` : "AGOTADO"}
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {dest.yataUpdate && (
+                          <div style={{ fontSize: 9, color: T.textMuted, marginTop: 6, textAlign: "right" }}>
+                            Stock actualizado: {new Date(dest.yataUpdate * 1000).toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* ── Duke Trade Optimizer ── */}
+            <div style={{ background: T.card, border: `1px solid ${T.gold}33`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.gold, marginBottom: 10 }}>Mr. Duke - Plushie & Flower Trade</div>
+              <div style={{ fontSize: 11, color: T.textDim, marginBottom: 12, lineHeight: 1.6 }}>
+                Entrega sets de 10 Plushies y 10 Flowers a Duke por recompensas masivas + merits.
+                Cada set completado te da dinero + puntos de merit. Los Plushies y Flowers se compran baratos en el extranjero.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <div style={{ background: T.bg, borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontSize: 11, color: T.purple, fontWeight: 600, marginBottom: 8 }}>🧸 Plushies por Destino</div>
+                  {TRAVEL_DATA.map(d => {
+                    const mv = allItems?.[d.plushie.id]?.market_value ?? 0;
+                    return (
+                      <div key={d.destination} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 10 }}>
+                        <span style={{ color: T.textDim }}>{d.flag} {d.plushie.name}</span>
+                        <span style={{ color: mv > 0 ? T.green : T.textMuted }}>${fmt(mv)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                <div style={{ background: T.bg, borderRadius: 8, padding: 12 }}>
+                  <div style={{ fontSize: 11, color: T.purple, fontWeight: 600, marginBottom: 8 }}>🌸 Flowers por Destino</div>
+                  {TRAVEL_DATA.map(d => {
+                    const mv = allItems?.[d.flower.id]?.market_value ?? 0;
+                    return (
+                      <div key={d.destination} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 10 }}>
+                        <span style={{ color: T.textDim }}>{d.flag} {d.flower.name}</span>
+                        <span style={{ color: mv > 0 ? T.green : T.textMuted }}>${fmt(mv)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+              <div style={{ marginTop: 10, textAlign: "center" }}>
+                <a href="https://www.torn.com/page.php?sid=missions" target="_blank" rel="noreferrer"
+                  style={{ fontSize: 12, color: T.gold, textDecoration: "none", fontWeight: 600 }}>
+                  Ir a Duke Missions →
+                </a>
+              </div>
+            </div>
+
+            {/* ── Pro Strategy Guide ── */}
+            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.accent, marginBottom: 10 }}>Estrategia de Viajes Nivel 15+</div>
+              <div style={{ fontSize: 12, color: T.textDim, lineHeight: 1.8 }}>
+                <span style={{ color: T.gold, fontWeight: 700 }}>PRIORIDAD MÁXIMA:</span><br />
+                • Viaja a la ruta con mejor $/hora (ranking arriba actualizado en tiempo real)<br />
+                • Llena TODOS tus slots de carga con los items más rentables<br />
+                • Compra siempre 1 Plushie + 1 Flower por viaje para Duke<br />
+                <br />
+                <span style={{ color: T.accent, fontWeight: 700 }}>OPTIMIZACIÓN DE VELOCIDAD:</span><br />
+                • Business Class Ticket = 30% menos tiempo de vuelo<br />
+                • Airstrip de facción = 30% adicional de reducción<br />
+                • Combo Airstrip + Business = 51% reducción (casi la mitad del tiempo)<br />
+                • WLT (Working Lunch Ticket) = viaje instantáneo pero son caros<br />
+                <br />
+                <span style={{ color: T.green, fontWeight: 700 }}>CON CIENTOS DE MILLONES:</span><br />
+                • Invierte en First Class Tickets para máxima eficiencia<br />
+                • Compra WLT en bulk cuando estén baratos para viajes rápidos<br />
+                • Vende items en tu Bazaar, no en el Item Market (evitas 5% comisión)<br />
+                • Configura precios en Bazaar ligeramente por debajo del mercado para venta rápida<br />
+                • Combina viajes con misiones de Duke para doble beneficio (dinero + merits)<br />
+                <br />
+                <span style={{ color: T.purple, fontWeight: 700 }}>LINKS RÁPIDOS:</span><br />
+                <a href="https://www.torn.com/travelagency.php" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Travel Agency</a>
+                {" | "}
+                <a href="https://www.torn.com/bazaar.php" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Mi Bazaar</a>
+                {" | "}
+                <a href="https://www.torn.com/page.php?sid=ItemMarket" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Item Market</a>
+                {" | "}
+                <a href="https://www.torn.com/page.php?sid=missions" target="_blank" rel="noreferrer" style={{ color: T.accent }}>Duke Missions</a>
+                <br /><br />
+                <span style={{ color: T.purple, fontWeight: 700 }}>HERRAMIENTAS EXTERNAS:</span><br />
+                <a href="https://yata.yt/bazaar/abroad/" target="_blank" rel="noreferrer" style={{ color: T.accent }}>YATA Foreign Stock</a>
+                {" | "}
+                <a href="https://droqsdb.com/" target="_blank" rel="noreferrer" style={{ color: T.accent }}>DroqsDB (Stock + Restock)</a>
+                {" | "}
+                <a href="https://tornstats.com/travel" target="_blank" rel="noreferrer" style={{ color: T.accent }}>TornStats Travel</a>
               </div>
             </div>
           </>
-        )}
+          );
+        })()}
 
         {/* ═══ MARKET TAB ═══ */}
         {tab === "market" && (
           <>
-            <SectionHeader icon="🏪" title="Market Scanner" badge="AUTO" />
+            <SectionHeader icon="🏪" title="Market Scanner" badge={scanning ? "SCANNING" : "MANUAL"} />
 
             {/* Status bar */}
             <div style={{
-              background: scanPaused ? T.goldDim : scanning ? T.accentDim : T.greenDim,
-              border: `1px solid ${scanPaused ? T.gold + "44" : scanning ? T.accent + "44" : T.green + "44"}`,
+              background: scanPaused ? T.goldDim : scanning ? T.accentDim : T.card,
+              border: `1px solid ${scanPaused ? T.gold + "44" : scanning ? T.accent + "44" : T.border}`,
               borderRadius: 8, padding: 10, marginBottom: 10, fontSize: 12, textAlign: "center",
-              color: scanPaused ? T.gold : scanning ? T.accent : T.green,
+              color: scanPaused ? T.gold : scanning ? T.accent : T.textDim,
             }}>
               {scanPaused
                 ? `⏸️ PAUSADO — ${marketDeals.length} deals guardados`
                 : scanning
                   ? `🔄 Escaneando: ${scanProgress}`
-                  : allItems
-                    ? `🟢 LIVE — ${marketDeals.length} deals encontrados`
-                    : "⏳ Cargando base de datos de items..."
+                  : marketDeals.length > 0
+                    ? `⏹ Detenido — ${marketDeals.length} deals encontrados`
+                    : "⏹ Pulsa Start para escanear el mercado"
               }
             </div>
 
             {/* Controls */}
             {allItems && (
               <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+                <button
+                  onClick={() => {
+                    if (!scanning) { startMarketScan(); }
+                    else { stopMarketScan(); }
+                  }}
+                  style={{
+                    flex: 1, padding: "10px",
+                    background: scanning ? T.redDim : T.greenDim,
+                    border: `1px solid ${scanning ? T.red + "55" : T.green + "55"}`,
+                    borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
+                    fontFamily: "inherit", color: scanning ? T.red : T.green,
+                  }}
+                >
+                  {scanning ? "⏹ Stop" : "▶ Start"}
+                </button>
+                {scanning && (
                 <button
                   onClick={() => { scanPausedRef.current = !scanPaused; setScanPaused(!scanPaused); }}
                   style={{
@@ -1638,6 +3088,7 @@ export default function TornGrowthOptimizer() {
                 >
                   {scanPaused ? "▶ Reanudar" : "⏸ Pausar"}
                 </button>
+                )}
                 <button
                   onClick={() => { marketResultsRef.current = []; setMarketDeals([]); }}
                   style={{
@@ -1979,6 +3430,389 @@ export default function TornGrowthOptimizer() {
           </>
         )}
 
+        {/* ═══ MERITS & HONORS TAB ═══ */}
+        {tab === "merits" && (() => {
+          // Use REAL Torn API data
+          const userHonors = data?.honors_awarded || [];
+          const userMedals = data?.medals_awarded || [];
+
+          // Build real honors list from API
+          const allRealHonors = tornHonors ? Object.entries(tornHonors).map(([id, h]) => ({
+            id: Number(id),
+            name: h.name,
+            description: h.description || "",
+            type: h.type,
+            rarity: h.rarity || "",
+            circulation: h.circulation || 0,
+            awarded: userHonors.includes(Number(id)),
+          })) : [];
+
+          // Build real medals list from API
+          const allRealMedals = tornMedals ? Object.entries(tornMedals).map(([id, m]) => ({
+            id: Number(id),
+            name: m.name,
+            description: m.description || "",
+            type: m.type,
+            rarity: m.rarity || "",
+            circulation: m.circulation || 0,
+            awarded: userMedals.includes(Number(id)),
+          })) : [];
+
+          // Also keep personalstats-based progress for honors/medals we can track
+          const psProgress = calcAllProgress(ps, networth, level, age);
+
+          const totalHonors = allRealHonors.length || HONORS_DB.length;
+          const totalMedals = allRealMedals.length || MEDALS_DB.length;
+          const honorsAwarded = allRealHonors.length > 0 ? allRealHonors.filter(h => h.awarded).length : userHonors.length;
+          const medalsAwarded = allRealMedals.length > 0 ? allRealMedals.filter(m => m.awarded).length : userMedals.length;
+
+          // Categorize honors by their Torn type/category
+          const HONOR_CATEGORIES = {
+            1: "Attacking", 2: "Defending", 3: "Crimes", 4: "Drugs", 5: "Gym",
+            6: "Items", 7: "Travel", 8: "Work", 9: "Education", 10: "Money",
+            11: "Jail", 12: "Hospital", 13: "Casino", 14: "Missions", 15: "Racing",
+            16: "Misc", 17: "Commitment", 18: "Weapons", 19: "Camo", 20: "Competitions",
+          };
+
+          // Group honors by type
+          const honorsByType = {};
+          allRealHonors.forEach(h => {
+            const cat = HONOR_CATEGORIES[h.type] || `Type ${h.type}`;
+            if (!honorsByType[cat]) honorsByType[cat] = [];
+            honorsByType[cat].push(h);
+          });
+
+          // Merge: try to match psProgress items to real honors by name for progress data
+          const getProgressForHonor = (honor) => {
+            const match = psProgress.find(p => p.name.toLowerCase() === honor.name.toLowerCase());
+            return match || null;
+          };
+
+          // Filter state for the tab
+          const [meritsFilter, setMeritsFilter] = [
+            selectedMerit?._filter || "all",
+            (f) => setSelectedMerit(prev => prev ? { ...prev, _filter: f } : { _filter: f }),
+          ];
+          const activeFilter = selectedMerit?._filter || "all";
+
+          return (
+          <>
+            <SectionHeader icon="🏅" title="Honors & Medals Tracker" badge={`${honorsAwarded + medalsAwarded}/${totalHonors + totalMedals} total`} />
+
+            {!tornHonors && (
+              <div style={{ textAlign: "center", padding: 30, color: T.textDim, fontSize: 12 }}>
+                Cargando honors reales de Torn...
+              </div>
+            )}
+
+            {tornHonors && (
+            <>
+            {/* ── Summary Cards ── */}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 20 }}>
+              <div style={{ background: T.card, border: `1px solid ${T.green}33`, borderRadius: 12, padding: 14, textAlign: "center" }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: T.green }}>{honorsAwarded}</div>
+                <div style={{ fontSize: 10, color: T.textDim }}>Honors / {totalHonors}</div>
+              </div>
+              <div style={{ background: T.card, border: `1px solid ${T.purple}33`, borderRadius: 12, padding: 14, textAlign: "center" }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: T.purple }}>{medalsAwarded}</div>
+                <div style={{ fontSize: 10, color: T.textDim }}>Medals / {totalMedals}</div>
+              </div>
+              <div style={{ background: T.card, border: `1px solid ${T.gold}33`, borderRadius: 12, padding: 14, textAlign: "center" }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: T.gold }}>
+                  {((honorsAwarded + medalsAwarded) / Math.max(totalHonors + totalMedals, 1) * 100).toFixed(1)}%
+                </div>
+                <div style={{ fontSize: 10, color: T.textDim }}>Progreso Total</div>
+              </div>
+            </div>
+
+            {/* ── Honors with personalstats progress ── */}
+            {psProgress.filter(h => !h.completed).length > 0 && (
+              <div style={{ background: `linear-gradient(135deg, ${T.card}, ${T.goldDim})`, border: `1px solid ${T.gold}44`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: T.gold, marginBottom: 6 }}>🎯 Progreso Trackeable</div>
+                <div style={{ fontSize: 11, color: T.textDim, marginBottom: 12 }}>Honors y medals que podemos medir con tus stats. Click para ver detalles.</div>
+                <div style={{ maxHeight: 350, overflowY: "auto" }}>
+                {psProgress.filter(h => !h.completed).slice(0, 15).map((h) => (
+                  <div key={h.id} onClick={() => setSelectedMerit(h)} style={{
+                    display: "flex", alignItems: "center", gap: 10,
+                    padding: "8px 12px", background: T.bg + "cc", borderRadius: 8, marginBottom: 4,
+                    border: `1px solid ${h.progress >= 90 ? T.green + "55" : h.progress >= 50 ? T.gold + "33" : T.border}`,
+                    cursor: "pointer",
+                  }}>
+                    <span style={{ fontSize: 16 }}>{h.icon}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontSize: 11, fontWeight: 700, color: h.progress >= 90 ? T.green : h.progress >= 50 ? T.gold : T.text }}>{h.name}</span>
+                          <span style={{
+                            fontSize: 7, fontWeight: 700, padding: "1px 4px", borderRadius: 3,
+                            background: h.type === "medal" ? T.purpleDim : T.accentDim,
+                            color: h.type === "medal" ? T.purple : T.accent,
+                          }}>{h.type === "medal" ? "M" : "H"}</span>
+                        </div>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: h.progress >= 90 ? T.green : h.progress >= 50 ? T.gold : T.textDim }}>
+                          {h.progress.toFixed(1)}%
+                        </span>
+                      </div>
+                      <div style={{ height: 4, background: T.bg, borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{
+                          width: `${h.progress}%`, height: "100%", borderRadius: 2,
+                          background: h.progress >= 90 ? T.green : h.progress >= 50 ? T.gold : T.accent,
+                          transition: "width 0.5s ease",
+                        }} />
+                      </div>
+                      <div style={{ fontSize: 9, color: T.textDim, marginTop: 2 }}>
+                        {fmt(h.current)} / {fmt(h.target)} — faltan {fmt(h.remaining)}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                </div>
+              </div>
+            )}
+
+            {/* ── All Real Honors by Category ── */}
+            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.accent, marginBottom: 12 }}>📊 Todos los Honors (datos reales de Torn)</div>
+
+              {/* Category grid */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 16 }}>
+                {Object.entries(honorsByType).sort((a, b) => a[0].localeCompare(b[0])).map(([cat, items]) => {
+                  const done = items.filter(h => h.awarded).length;
+                  const pct = (done / items.length) * 100;
+                  return (
+                    <div key={cat} style={{
+                      padding: "8px 10px", background: T.bg, borderRadius: 8,
+                      border: `1px solid ${pct >= 100 ? T.green + "44" : T.border}`,
+                    }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                        <span style={{ fontSize: 11, color: T.text }}>{cat}</span>
+                        <span style={{ fontSize: 10, fontWeight: 700, color: pct >= 100 ? T.green : pct > 0 ? T.gold : T.textDim }}>
+                          {done}/{items.length}
+                        </span>
+                      </div>
+                      <div style={{ height: 4, background: T.card, borderRadius: 2, overflow: "hidden" }}>
+                        <div style={{
+                          width: `${pct}%`, height: "100%", borderRadius: 2,
+                          background: pct >= 100 ? T.green : pct > 0 ? T.accent : T.textMuted,
+                        }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Full scrollable list */}
+              <div style={{ maxHeight: 500, overflowY: "auto", paddingRight: 4 }}>
+                {Object.entries(honorsByType).sort((a, b) => a[0].localeCompare(b[0])).map(([cat, items]) => (
+                  <div key={cat}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: T.accent, padding: "10px 0 6px", borderBottom: `1px solid ${T.border}`, position: "sticky", top: 0, background: T.card, zIndex: 1 }}>
+                      {cat} ({items.filter(h => h.awarded).length}/{items.length})
+                    </div>
+                    {items.map((h) => {
+                      const prog = getProgressForHonor(h);
+                      return (
+                        <div key={h.id} onClick={() => setSelectedMerit({ ...h, _real: true, _progress: prog })} style={{
+                          display: "flex", alignItems: "center", gap: 8,
+                          padding: "8px 10px", borderBottom: `1px solid ${T.border}22`,
+                          opacity: h.awarded ? 0.7 : 1,
+                          cursor: "pointer",
+                        }}>
+                          <span style={{ fontSize: 14, width: 22, textAlign: "center" }}>
+                            {h.awarded ? "✅" : "🔒"}
+                          </span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{
+                                fontSize: 11, fontWeight: 600,
+                                color: h.awarded ? T.green : T.text,
+                                textDecoration: h.awarded ? "line-through" : "none",
+                              }}>{h.name}</span>
+                              <span style={{
+                                fontSize: 9, fontWeight: 600,
+                                color: h.awarded ? T.green : T.textDim,
+                              }}>{h.awarded ? "DONE" : h.rarity || ""}</span>
+                            </div>
+                            {h.description && (
+                              <div style={{ fontSize: 9, color: T.textDim, marginTop: 2 }}>{h.description}</div>
+                            )}
+                            {prog && !h.awarded && (
+                              <div style={{ marginTop: 3 }}>
+                                <div style={{ height: 3, background: T.bg, borderRadius: 2, overflow: "hidden" }}>
+                                  <div style={{
+                                    width: `${prog.progress}%`, height: "100%", borderRadius: 2,
+                                    background: prog.progress >= 75 ? T.gold : T.accent,
+                                  }} />
+                                </div>
+                                <div style={{ fontSize: 8, color: T.textDim, marginTop: 1 }}>
+                                  {fmt(prog.current)}/{fmt(prog.target)} ({prog.progress.toFixed(1)}%)
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* ── Merits Invertidos ── */}
+            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16, marginBottom: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: T.gold, marginBottom: 12 }}>🎖️ Merits Invertidos</div>
+              {data?.merits ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {Object.entries(data.merits).map(([key, val]) => (
+                    <div key={key} style={{
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                      padding: "8px 12px", background: val > 0 ? T.accentDim : T.bg,
+                      border: `1px solid ${val > 0 ? T.accent + "33" : T.border}`, borderRadius: 8,
+                    }}>
+                      <span style={{ fontSize: 11, color: T.textDim, textTransform: "capitalize" }}>
+                        {key.replace(/([A-Z])/g, " $1").trim()}
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: val > 0 ? T.accent : T.textMuted }}>
+                        {val}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: 12, color: T.textDim, textAlign: "center", padding: 20 }}>
+                  Cargando datos de merits...
+                </div>
+              )}
+            </div>
+
+            {/* Tips */}
+            <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: T.accent, marginBottom: 8 }}>💡 Tips de Merits</div>
+              <div style={{ fontSize: 12, color: T.textDim, lineHeight: 1.7 }}>
+                {"• Crime merits → +nerve maximo (tu tienes " + bars.nerve.max + " nerve max)"}<br />
+                • Duke/Leslie missions (Plushies & Flowers) → merits + cash<br />
+                • Gym merits → bonificaciones de entrenamiento<br />
+                • Attack merits → desbloquean honors valiosos<br />
+                • Invierte merits en Nerve Bar primero, luego en Crime XP
+              </div>
+            </div>
+
+            {/* ── Detail Modal ── */}
+            {selectedMerit && !selectedMerit._filter && (() => {
+              const m = selectedMerit;
+              const isReal = m._real;
+              const prog = isReal ? m._progress : m;
+              const tip = !isReal ? (STAT_TIPS[m.stat] || { action: "Completa esta actividad en Torn", where: "Revisa la página correspondiente en Torn", link: null }) : null;
+              return (
+                <div onClick={() => setSelectedMerit(null)} style={{
+                  position: "fixed", top: 0, left: 0, right: 0, bottom: 0,
+                  background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  zIndex: 9999,
+                }}>
+                  <div onClick={e => e.stopPropagation()} style={{
+                    background: T.card, border: `1px solid ${T.border}`, borderRadius: 16,
+                    padding: 24, maxWidth: 420, width: "90%", position: "relative",
+                  }}>
+                    <div onClick={() => setSelectedMerit(null)} style={{
+                      position: "absolute", top: 12, right: 14, cursor: "pointer",
+                      fontSize: 18, color: T.textDim, fontWeight: 700,
+                    }}>✕</div>
+
+                    {/* Header */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                      <span style={{ fontSize: 36 }}>{(isReal ? m.awarded : m.completed) ? "✅" : (m.icon || "🏆")}</span>
+                      <div>
+                        <div style={{ fontSize: 16, fontWeight: 800, color: (isReal ? m.awarded : m.completed) ? T.green : T.text }}>{m.name}</div>
+                        {m.description && (
+                          <div style={{ fontSize: 11, color: T.textDim, marginTop: 4, lineHeight: 1.4 }}>{m.description}</div>
+                        )}
+                        {m.rarity && (
+                          <span style={{ fontSize: 9, fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: T.accentDim, color: T.accent, marginTop: 4, display: "inline-block" }}>
+                            {m.rarity} · {m.circulation ? fmt(m.circulation) + " jugadores" : ""}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Progress if available */}
+                    {prog && !prog.completed && (
+                      <div style={{ marginBottom: 16 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontSize: 12, color: T.textDim }}>{fmt(prog.current)} / {fmt(prog.target)}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: T.gold }}>{prog.progress.toFixed(1)}%</span>
+                        </div>
+                        <div style={{ height: 8, background: T.bg, borderRadius: 4, overflow: "hidden" }}>
+                          <div style={{
+                            width: `${prog.progress}%`, height: "100%", borderRadius: 4,
+                            background: prog.progress >= 75
+                              ? `linear-gradient(90deg, ${T.gold}, #fbbf24)`
+                              : `linear-gradient(90deg, ${T.accent}, #60a5fa)`,
+                          }} />
+                        </div>
+                        <div style={{ fontSize: 11, color: T.textDim, marginTop: 4 }}>
+                          Faltan {fmt(prog.remaining)} para completar
+                        </div>
+                      </div>
+                    )}
+
+                    {/* What to do (for stat-based items) */}
+                    {tip && !(isReal ? m.awarded : m.completed) && (
+                      <div style={{ background: T.bg, borderRadius: 10, padding: 14, marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: T.accent, marginBottom: 8 }}>🎯 Qué hacer:</div>
+                        <div style={{ fontSize: 12, color: T.text, marginBottom: 6, lineHeight: 1.5 }}>{tip.action}</div>
+                        <div style={{ fontSize: 11, color: T.textDim, lineHeight: 1.5 }}>📍 {tip.where}</div>
+                      </div>
+                    )}
+
+                    {/* Description as hint for real honors without stat tracking */}
+                    {isReal && !m.awarded && !prog && m.description && (
+                      <div style={{ background: T.bg, borderRadius: 10, padding: 14, marginBottom: 12 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: T.accent, marginBottom: 8 }}>🎯 Requisito:</div>
+                        <div style={{ fontSize: 12, color: T.text, lineHeight: 1.5 }}>{m.description}</div>
+                      </div>
+                    )}
+
+                    {/* Link */}
+                    {tip && tip.link && !(isReal ? m.awarded : m.completed) && (
+                      <a href={tip.link} target="_blank" rel="noopener noreferrer" style={{
+                        display: "block", textAlign: "center", padding: "10px 16px",
+                        background: `linear-gradient(135deg, ${T.accent}, #60a5fa)`,
+                        color: "#fff", fontWeight: 700, fontSize: 12, borderRadius: 8,
+                        textDecoration: "none", marginBottom: 8,
+                      }}>
+                        {tip.linkLabel} →
+                      </a>
+                    )}
+
+                    {/* View on Torn */}
+                    <a href="https://www.torn.com/page.php?sid=awards&tab=honors" target="_blank" rel="noopener noreferrer" style={{
+                      display: "block", textAlign: "center", padding: "8px 16px",
+                      background: T.bg, border: `1px solid ${T.border}`,
+                      color: T.textDim, fontWeight: 600, fontSize: 11, borderRadius: 8,
+                      textDecoration: "none",
+                    }}>
+                      Ver en Torn →
+                    </a>
+
+                    {/* Completed */}
+                    {(isReal ? m.awarded : m.completed) && (
+                      <div style={{
+                        background: T.bg, borderRadius: 10, padding: 14, marginTop: 12,
+                        textAlign: "center", border: `1px solid ${T.green}33`,
+                      }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: T.green }}>🎉 Completado!</div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
+            </>
+            )}
+          </>
+          );
+        })()}
+
         {/* ═══ CHECKLIST TAB ═══ */}
         {tab === "checklist" && (
           <>
@@ -2036,6 +3870,319 @@ export default function TornGrowthOptimizer() {
             </div>
           </>
         )}
+      </div>
+
+        {/* ═══ EASTER EGG HUNT TAB ═══ */}
+        {tab === "eggHunt" && (
+          <>
+            <SectionHeader icon="🥚" title="Easter Egg Hunter" badge={`${eggsFound.length} encontrados`} />
+
+            <div style={{ background: T.card, border: `1px solid ${T.gold}44`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: T.gold, marginBottom: 8 }}>🐰 Easter Egg Hunt 2026 - ACTIVO</div>
+              <div style={{ fontSize: 11, color: T.textDim, lineHeight: 1.7 }}>
+                Los huevos están pre-asignados en páginas aleatorias y <strong style={{ color: T.green }}>NO desaparecen</strong>.
+                La auto-nav abre cada página en la misma pestaña. Si el script PRO detecta un huevo: suena alarma, para la navegación y te avisa.
+              </div>
+            </div>
+
+            {/* EGG FOUND ALERT */}
+            {eggFound && (
+              <div style={{
+                background: `linear-gradient(135deg, ${T.goldDim}, rgba(245,158,11,0.3))`,
+                border: `2px solid ${T.gold}`, borderRadius: 12, padding: 16, marginBottom: 16,
+                textAlign: "center", animation: "pulse 1s infinite",
+              }}>
+                <div style={{ fontSize: 36, marginBottom: 8 }}>🥚</div>
+                <div style={{ fontSize: 16, fontWeight: 900, color: T.gold, marginBottom: 4 }}>HUEVO DETECTADO!</div>
+                <div style={{ fontSize: 12, color: T.text, marginBottom: 12 }}>Ve a la pestaña de Torn y recógelo</div>
+                <button onClick={() => setEggFound(false)} style={{
+                  padding: "8px 20px", background: T.gold, border: "none", borderRadius: 8,
+                  color: T.bg, fontSize: 12, fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                }}>Ya lo recogí</button>
+              </div>
+            )}
+
+            {/* Progress */}
+            <ProgressBar
+              value={eggIndex}
+              max={EGG_PAGES.length}
+              color={T.gold}
+              label="Progreso de navegación"
+              sublabel={`Página ${eggIndex} de ${EGG_PAGES.length}`}
+            />
+
+            {/* Current Page Display */}
+            <div style={{
+              background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
+              padding: 16, marginTop: 16, marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 11, color: T.textDim, marginBottom: 6, fontWeight: 600 }}>PÁGINA ACTUAL</div>
+              <div style={{
+                fontSize: 14, color: T.accent, fontWeight: 700, wordBreak: "break-all",
+                background: T.bg, borderRadius: 8, padding: "10px 14px", border: `1px solid ${T.border}`,
+              }}>
+                {EGG_PAGES[eggIndex] || "torn.com (home)"}
+              </div>
+            </div>
+
+            {/* Controls */}
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
+              <button
+                onClick={() => {
+                  eggWindowRef.current = window.open(`https://www.torn.com/${EGG_PAGES[eggIndex]}`, "torn_egg_hunt");
+                }}
+                style={{
+                  flex: 1, padding: "12px 16px", background: `linear-gradient(135deg, ${T.accent}, #06b6d4)`,
+                  border: "none", borderRadius: 8, color: T.bg, fontSize: 13, fontWeight: 700,
+                  cursor: "pointer", fontFamily: "inherit", minWidth: 120,
+                }}
+              >
+                🔗 Abrir en Torn
+              </button>
+
+              <button
+                onClick={() => {
+                  const next = eggIndex + 1 >= EGG_PAGES.length ? 0 : eggIndex + 1;
+                  setEggIndex(next);
+                  localStorage.setItem("torn_egg_index", next.toString());
+                  eggWindowRef.current = window.open(`https://www.torn.com/${EGG_PAGES[next]}`, "torn_egg_hunt");
+                }}
+                style={{
+                  flex: 1, padding: "12px 16px", background: T.greenDim,
+                  border: `1px solid ${T.green}44`, borderRadius: 8, color: T.green, fontSize: 13,
+                  fontWeight: 700, cursor: "pointer", fontFamily: "inherit", minWidth: 120,
+                }}
+              >
+                ➡️ Siguiente ({eggIndex + 1}/{EGG_PAGES.length})
+              </button>
+
+              <button
+                onClick={() => {
+                  const prev = eggIndex - 1 < 0 ? EGG_PAGES.length - 1 : eggIndex - 1;
+                  setEggIndex(prev);
+                  localStorage.setItem("torn_egg_index", prev.toString());
+                  eggWindowRef.current = window.open(`https://www.torn.com/${EGG_PAGES[prev]}`, "torn_egg_hunt");
+                }}
+                style={{
+                  padding: "12px 16px", background: T.purpleDim,
+                  border: `1px solid ${T.purple}44`, borderRadius: 8, color: T.purple, fontSize: 13,
+                  fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                ⬅️ Anterior
+              </button>
+            </div>
+
+            {/* Speed selector */}
+            <div style={{
+              background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
+              padding: 12, marginBottom: 12, display: "flex", alignItems: "center", gap: 12,
+            }}>
+              <span style={{ fontSize: 11, color: T.textDim, fontWeight: 600, whiteSpace: "nowrap" }}>⏱️ Velocidad:</span>
+              {[3, 5, 8, 12].map(s => (
+                <button key={s} onClick={() => setEggAutoSpeed(s)} style={{
+                  padding: "6px 12px", borderRadius: 6, fontSize: 12, fontWeight: 700,
+                  fontFamily: "inherit", cursor: "pointer",
+                  background: eggAutoSpeed === s ? T.accentDim : "transparent",
+                  border: `1px solid ${eggAutoSpeed === s ? T.accent : T.border}`,
+                  color: eggAutoSpeed === s ? T.accent : T.textDim,
+                }}>{s}s</button>
+              ))}
+            </div>
+
+            {/* Auto-navigate */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <button
+                onClick={() => {
+                  if (eggAutoRef.current) {
+                    eggAutoRef.current = false;
+                    setEggAutoRunning(false);
+                    if (eggIntervalRef.current) clearInterval(eggIntervalRef.current);
+                    return;
+                  }
+                  // First click opens the tab (user gesture = no popup block)
+                  eggWindowRef.current = window.open(`https://www.torn.com/${EGG_PAGES[eggIndex]}`, "torn_egg_hunt");
+                  eggAutoRef.current = true;
+                  setEggAutoRunning(true);
+                  eggIntervalRef.current = setInterval(() => {
+                    if (!eggAutoRef.current) return;
+                    setEggIndex(prev => {
+                      const next = prev + 1 >= EGG_PAGES.length ? 0 : prev + 1;
+                      localStorage.setItem("torn_egg_index", next.toString());
+                      try {
+                        eggWindowRef.current = window.open(`https://www.torn.com/${EGG_PAGES[next]}`, "torn_egg_hunt");
+                      } catch (e) {
+                        eggWindowRef.current = window.open(`https://www.torn.com/${EGG_PAGES[next]}`, "torn_egg_hunt");
+                      }
+                      return next;
+                    });
+                  }, eggAutoSpeed * 1000);
+                }}
+                style={{
+                  flex: 1, padding: "12px 16px",
+                  background: eggAutoRunning ? T.redDim : T.goldDim,
+                  border: `1px solid ${eggAutoRunning ? T.red : T.gold}44`,
+                  borderRadius: 8, color: eggAutoRunning ? T.red : T.gold, fontSize: 13,
+                  fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                {eggAutoRunning ? "⏹️ Detener Auto-Nav" : `🚀 Auto-Navegación (${eggAutoSpeed}s)`}
+              </button>
+
+              <button
+                onClick={() => {
+                  setEggIndex(0);
+                  localStorage.setItem("torn_egg_index", "0");
+                }}
+                style={{
+                  padding: "12px 16px", background: T.redDim,
+                  border: `1px solid ${T.red}44`, borderRadius: 8, color: T.red, fontSize: 13,
+                  fontWeight: 700, cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                🔄 Reset
+              </button>
+            </div>
+
+            {/* Mark egg found */}
+            <div style={{
+              background: T.card, border: `1px solid ${T.border}`, borderRadius: 12,
+              padding: 16, marginBottom: 16,
+            }}>
+              <div style={{ fontSize: 11, color: T.textDim, marginBottom: 8, fontWeight: 600 }}>🥚 MARCAR HUEVO ENCONTRADO</div>
+              <button
+                onClick={() => {
+                  const pageName = EGG_PAGES[eggIndex] || "home";
+                  const entry = { page: pageName, time: new Date().toLocaleString(), index: eggIndex };
+                  const updated = [...eggsFound, entry];
+                  setEggsFound(updated);
+                  localStorage.setItem("torn_eggs_found", JSON.stringify(updated));
+                }}
+                style={{
+                  width: "100%", padding: "12px 16px",
+                  background: `linear-gradient(135deg, ${T.gold}, #f59e0b)`,
+                  border: "none", borderRadius: 8, color: T.bg, fontSize: 13, fontWeight: 700,
+                  cursor: "pointer", fontFamily: "inherit",
+                }}
+              >
+                🥚 Encontré un huevo en esta página!
+              </button>
+            </div>
+
+            {/* Eggs found log */}
+            {eggsFound.length > 0 && (
+              <div style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: T.textDim, marginBottom: 8, fontWeight: 600 }}>📋 HUEVOS ENCONTRADOS ({eggsFound.length})</div>
+                {eggsFound.map((e, i) => (
+                  <div key={i} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "8px 10px", borderBottom: i < eggsFound.length - 1 ? `1px solid ${T.border}` : "none",
+                  }}>
+                    <div>
+                      <span style={{ fontSize: 12, color: T.gold, marginRight: 8 }}>🥚</span>
+                      <span style={{ fontSize: 12, color: T.text }}>{e.page}</span>
+                    </div>
+                    <span style={{ fontSize: 10, color: T.textDim }}>{e.time}</span>
+                  </div>
+                ))}
+                <button
+                  onClick={() => { setEggsFound([]); localStorage.removeItem("torn_eggs_found"); }}
+                  style={{
+                    marginTop: 10, padding: "6px 12px", background: T.redDim,
+                    border: `1px solid ${T.red}44`, borderRadius: 6, color: T.red, fontSize: 11,
+                    cursor: "pointer", fontFamily: "inherit", fontWeight: 600,
+                  }}
+                >
+                  Limpiar registro
+                </button>
+              </div>
+            )}
+
+            {/* Install PRO script */}
+            <div style={{ background: T.card, border: `1px solid ${T.gold}44`, borderRadius: 12, padding: 16 }}>
+              <div style={{ fontSize: 11, color: T.gold, marginBottom: 8, fontWeight: 600 }}>⚡ INSTALAR SCRIPT (OBLIGATORIO)</div>
+              <div style={{ fontSize: 11, color: T.textDim, lineHeight: 1.8, marginBottom: 10 }}>
+                Desactiva el Egg Finder viejo e instala nuestro script PRO. Tiene:
+              </div>
+              <div style={{ fontSize: 11, color: T.text, lineHeight: 2, marginBottom: 12 }}>
+                <div>🔊 <strong>Alarma de sonido</strong> — imposible ignorar aunque estés en otra pestaña</div>
+                <div>🖥️ <strong>Overlay gigante</strong> — pantalla completa con "HUEVO ENCONTRADO"</div>
+                <div>📌 <strong>Huevo agrandado 600%</strong> — centrado en pantalla con borde dorado</div>
+                <div>⏸️ <strong>Para la auto-nav</strong> — avisa a nuestra app para pausar la navegación</div>
+                <div>📑 <strong>Flash en título</strong> — la pestaña de Torn parpadea aunque no la veas</div>
+              </div>
+              <div style={{ fontSize: 12, color: T.accent, marginBottom: 8 }}>
+                Pasos: Tampermonkey → ⊕ Crear script → Pega el contenido del archivo:
+              </div>
+              <div style={{
+                background: T.bg, borderRadius: 8, padding: "10px 14px",
+                fontSize: 12, color: T.accent, fontFamily: "inherit",
+                border: `1px solid ${T.border}`, userSelect: "all",
+              }}>src/torn-egg-hunter-pro.user.js</div>
+              <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 6 }}>
+                <div style={{ fontSize: 10, color: T.textDim }}>O también puedes usar estos scripts de la comunidad:</div>
+                <a href="https://greasyfork.org/en/scripts/463421-egg-finder" target="_blank" rel="noreferrer"
+                  style={{ fontSize: 11, color: T.textMuted, textDecoration: "none" }}>
+                  Egg Finder (básico, sin sonido)
+                </a>
+                <a href="https://greasyfork.org/en/scripts/463484-heasley-s-egg-navigator" target="_blank" rel="noreferrer"
+                  style={{ fontSize: 11, color: T.textMuted, textDecoration: "none" }}>
+                  Heasley's Egg Navigator (navegación, sin detección)
+                </a>
+              </div>
+            </div>
+          </>
+        )}
+
+      {/* ═══ CLAUDE CHAT ═══ */}
+      {chatOpen && serverOnline && (
+        <ClaudeChat tornContext={tornContext} onClose={() => setChatOpen(false)} />
+      )}
+      {serverStarting && !serverOnline && (
+        <div style={{
+          position: "fixed", bottom: 80, right: 20, width: 320,
+          background: T.card, border: `1px solid ${T.gold}44`, borderRadius: 12,
+          padding: 16, zIndex: 9999, boxShadow: `0 8px 32px rgba(0,0,0,0.5)`,
+          fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: T.gold, marginBottom: 8 }}>Encender Chat Server</div>
+          <div style={{ fontSize: 11, color: T.textDim, lineHeight: 1.7, marginBottom: 12 }}>Abre una terminal y ejecuta:</div>
+          <div style={{
+            background: T.bg, borderRadius: 8, padding: "10px 14px",
+            fontSize: 12, color: T.accent, fontFamily: "inherit",
+            border: `1px solid ${T.border}`, userSelect: "all",
+          }}>node chat-server.js</div>
+          <div style={{ fontSize: 10, color: T.textMuted, marginTop: 8 }}>Se conectara automaticamente cuando detecte el servidor.</div>
+        </div>
+      )}
+      <div style={{ position: "fixed", bottom: 20, right: 20, display: "flex", gap: 8, zIndex: 9998 }}>
+        <button onClick={toggleServer} title={serverOnline ? "Apagar servidor" : "Encender servidor"}
+          style={{
+            width: 44, height: 44, borderRadius: "50%",
+            background: serverOnline ? T.greenDim : T.redDim,
+            border: `2px solid ${serverOnline ? T.green : T.red}66`,
+            color: serverOnline ? T.green : T.red, fontSize: 18, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: `0 4px 16px ${serverOnline ? T.green : T.red}33`, transition: "all 0.3s",
+          }}>{"\u23FB"}</button>
+        <button onClick={() => {
+          if (!serverOnline) { setServerStarting(true); setTimeout(() => setServerStarting(false), 6000); }
+          else setChatOpen(!chatOpen);
+        }} style={{
+            width: 56, height: 56, borderRadius: "50%",
+            background: chatOpen ? T.accent : `linear-gradient(135deg, ${T.accent}, #06b6d4)`,
+            border: "none", color: T.bg, fontSize: 24, cursor: "pointer",
+            boxShadow: `0 4px 20px ${T.accent}44`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            transition: "all 0.3s", position: "relative",
+          }}>
+          {chatOpen ? "\u2715" : "\uD83E\uDD16"}
+          <div style={{
+            position: "absolute", top: 0, right: 0, width: 12, height: 12, borderRadius: "50%",
+            background: serverOnline ? T.green : T.red, border: `2px solid ${T.card}`,
+            boxShadow: `0 0 6px ${serverOnline ? T.green : T.red}`,
+          }} />
+        </button>
       </div>
 
       {/* Pulse animation */}
