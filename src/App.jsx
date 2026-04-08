@@ -704,8 +704,9 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock) => 
     const totalRevenue = bestCombo.reduce((s, it) => s + it.sellPrice, 0);
     const totalProfit = totalRevenue - totalInvestment;
 
-    // Round trip time
-    const roundTripMin = Math.max(1, Math.ceil(dest.flightTime * 2 * ticketMod));
+    // Flight times
+    const oneWayMin = Math.max(1, Math.ceil(dest.flightTime * ticketMod));
+    const roundTripMin = oneWayMin * 2;
     const roundTripHours = roundTripMin / 60;
     const profitPerHour = roundTripHours > 0 ? Math.round(totalProfit / roundTripHours) : 0;
     const profitPerMin = roundTripMin > 0 ? Math.round(totalProfit / roundTripMin) : 0;
@@ -718,7 +719,7 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock) => 
     return {
       ...dest, allDestItems, bestCombo,
       totalInvestment, totalRevenue, totalProfit,
-      roundTripMin, profitPerHour, profitPerMin,
+      oneWayMin, roundTripMin, profitPerHour, profitPerMin,
       tripsPerDay, dailyProfit, outOfStockCount, hasStockData, yataUpdate,
     };
   }).sort((a, b) => b.profitPerHour - a.profitPerHour);
@@ -2620,7 +2621,7 @@ export default function TornGrowthOptimizer() {
                   {[
                     { label: "Beneficio/Viaje", value: `$${fmt(bestRoute.totalProfit)}`, color: T.green },
                     { label: "Beneficio/Hora", value: `$${fmt(bestRoute.profitPerHour)}`, color: T.gold },
-                    { label: "Ida y Vuelta", value: `${bestRoute.roundTripMin}min`, color: T.accent },
+                    { label: "Vuelo (ida)", value: `${bestRoute.oneWayMin}min`, color: T.accent },
                     { label: "Viajes/Día", value: `~${bestRoute.tripsPerDay}`, color: T.purple },
                   ].map(s => (
                     <div key={s.label} style={{ textAlign: "center" }}>
@@ -2764,7 +2765,7 @@ export default function TornGrowthOptimizer() {
               </div>
               {/* Header */}
               <div style={{ display: "grid", gridTemplateColumns: "30px 2fr 1fr 1fr 1.2fr 1.2fr", padding: "8px 16px", borderBottom: `1px solid ${T.border}`, gap: 8 }}>
-                {["#", "Destino", "Vuelo I/V", "$/Viaje", "$/Hora", "$/Día"].map(h => (
+                {["#", "Destino", "Vuelo", "$/Viaje", "$/Hora", "$/Día"].map(h => (
                   <div key={h} style={{ fontSize: 9, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600 }}>{h}</div>
                 ))}
               </div>
@@ -2799,7 +2800,7 @@ export default function TornGrowthOptimizer() {
                           <span style={{ fontSize: 9, color: T.green, marginLeft: 6 }}>EN STOCK</span>
                         )}
                       </div>
-                      <div style={{ fontSize: 11, color: T.textDim }}>{dest.roundTripMin}min</div>
+                      <div style={{ fontSize: 11, color: T.textDim }}>{dest.oneWayMin}m <span style={{ fontSize: 9, color: T.textMuted }}>({dest.roundTripMin}m i/v)</span></div>
                       <div style={{ fontSize: 12, fontWeight: 600, color: hasProfit ? T.green : T.textMuted }}>
                         {hasProfit ? `$${fmt(dest.totalProfit)}` : "N/A"}
                       </div>
