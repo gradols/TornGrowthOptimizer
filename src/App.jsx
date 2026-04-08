@@ -692,8 +692,9 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, dro
       const sellAfterFee = Math.round(sellPrice * 0.95);
       const profit = sellAfterFee - abroadCost;
       const itemName = marketItem?.name || stockItem.name;
-      // DroqsDB restock data
-      const restockMin = droqsItem?.estimatedRestockMinutes ?? null;
+      // DroqsDB restock data (null = in stock or no data)
+      const restockMin = (droqsItem?.estimatedRestockMinutes != null && droqsItem.estimatedRestockMinutes > 0)
+        ? droqsItem.estimatedRestockMinutes : null;
       const droqsProfitPerMin = droqsItem?.profitPerMinute ?? null;
       const type = PLUSHIE_IDS.has(stockItem.id) ? "plushie"
         : FLOWER_IDS.has(stockItem.id) ? "flower" : "item";
@@ -3003,13 +3004,13 @@ export default function TornGrowthOptimizer() {
                                 }
                               </div>
                               <div style={{ fontSize: 10, color: T.textMuted }}>
-                                {it.restockMin !== null
-                                  ? it.abroadStock > 0
-                                    ? <span style={{ color: T.textMuted }}>—</span>
-                                    : <span style={{ color: it.willBeInStock ? T.gold : T.textMuted }}>
-                                        ~{it.restockMin}m {it.willBeInStock ? "✓" : ""}
+                                {it.abroadStock > 0
+                                  ? <span>en stock</span>
+                                  : it.restockMin !== null
+                                    ? <span style={{ color: it.willBeInStock ? T.gold : T.accent, fontWeight: 600 }}>
+                                        ~{it.restockMin}m {it.willBeInStock ? "✓ al llegar" : ""}
                                       </span>
-                                  : "—"
+                                    : <span style={{ color: T.red, fontSize: 9 }}>sin dato</span>
                                 }
                               </div>
                             </div>
