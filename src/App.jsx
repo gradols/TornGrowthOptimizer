@@ -624,111 +624,25 @@ const getGymStrategy = (stats, activeGymId, happy) => {
   return { focus, reason, tips, ratioType, gym, gymName, specialists, accessibleSpecialists, bestDotStat };
 };
 
-// ─── TRAVEL PROFIT DATA (ULTRA-OPTIMIZED) ───────────────────────────────────
-// Each destination has: standard items (buy cheap abroad, sell in Torn), plushie, flower
-// buyPrice = approximate cost abroad per unit, itemId = Torn item ID for market lookup
-// flightTime in minutes (one way), roundTrip = flightTime * 2
-const TRAVEL_DATA = [
-  {
-    destination: "Mexico", flag: "🇲🇽", flightTime: 26, nurseFee: 1,
-    items: [
-      { name: "Feathery Hotel Coupon", id: 364, buyPrice: 252, category: "standard" },
-      { name: "Bottle of Tequila", id: 366, buyPrice: 135, category: "standard" },
-    ],
-    plushie: { name: "Sheep Plushie", id: 273, buyPrice: 100 },
-    flower: { name: "Dahlia", id: 260, buyPrice: 100 },
-  },
-  {
-    destination: "Cayman Islands", flag: "🇰🇾", flightTime: 35, nurseFee: 10,
-    items: [
-      { name: "Pearl Necklace", id: 367, buyPrice: 450, category: "standard" },
-      { name: "Gold Ring", id: 368, buyPrice: 600, category: "standard" },
-    ],
-    plushie: { name: "Nessie Plushie", id: 274, buyPrice: 100 },
-    flower: { name: "Banana Orchid", id: 261, buyPrice: 100 },
-  },
-  {
-    destination: "Canada", flag: "🇨🇦", flightTime: 41, nurseFee: 10,
-    items: [
-      { name: "Maple Syrup", id: 369, buyPrice: 500, category: "standard" },
-      { name: "Fur Coat", id: 370, buyPrice: 990, category: "standard" },
-    ],
-    plushie: { name: "Wolverine Plushie", id: 275, buyPrice: 100 },
-    flower: { name: "Crocus", id: 262, buyPrice: 100 },
-  },
-  {
-    destination: "Hawaii", flag: "🇺🇸", flightTime: 134, nurseFee: 10,
-    items: [
-      { name: "Hawaiian Shirt", id: 371, buyPrice: 250, category: "standard" },
-      { name: "Coconut", id: 372, buyPrice: 100, category: "standard" },
-    ],
-    plushie: { name: "Stingray Plushie", id: 276, buyPrice: 100 },
-    flower: { name: "Orchid", id: 263, buyPrice: 100 },
-  },
-  {
-    destination: "United Kingdom", flag: "🇬🇧", flightTime: 159, nurseFee: 10,
-    items: [
-      { name: "Crumpets", id: 373, buyPrice: 150, category: "standard" },
-      { name: "Tea", id: 374, buyPrice: 75, category: "standard" },
-    ],
-    plushie: { name: "Kitten Plushie", id: 277, buyPrice: 100 },
-    flower: { name: "Heather", id: 264, buyPrice: 100 },
-  },
-  {
-    destination: "Argentina", flag: "🇦🇷", flightTime: 167, nurseFee: 10,
-    items: [
-      { name: "Yerba Mate", id: 375, buyPrice: 350, category: "standard" },
-      { name: "Emerald", id: 376, buyPrice: 2000, category: "standard" },
-    ],
-    plushie: { name: "Jaguar Plushie", id: 278, buyPrice: 100 },
-    flower: { name: "Ceibo Flower", id: 265, buyPrice: 100 },
-  },
-  {
-    destination: "Switzerland", flag: "🇨🇭", flightTime: 175, nurseFee: 10,
-    items: [
-      { name: "Swiss Army Knife", id: 377, buyPrice: 1500, category: "standard" },
-      { name: "Swiss Watch", id: 378, buyPrice: 3250, category: "standard" },
-    ],
-    plushie: { name: "Chamois Plushie", id: 279, buyPrice: 100 },
-    flower: { name: "Edelweiss", id: 266, buyPrice: 100 },
-  },
-  {
-    destination: "Japan", flag: "🇯🇵", flightTime: 225, nurseFee: 10,
-    items: [
-      { name: "Katana", id: 379, buyPrice: 3000, category: "standard" },
-      { name: "Sake", id: 380, buyPrice: 500, category: "standard" },
-    ],
-    plushie: { name: "Monkey Plushie", id: 281, buyPrice: 100 },
-    flower: { name: "Cherry Blossom", id: 267, buyPrice: 100 },
-  },
-  {
-    destination: "China", flag: "🇨🇳", flightTime: 242, nurseFee: 10,
-    items: [
-      { name: "Fireworks", id: 383, buyPrice: 1500, category: "standard" },
-      { name: "Dragon Figurine", id: 384, buyPrice: 5000, category: "standard" },
-    ],
-    plushie: { name: "Panda Plushie", id: 282, buyPrice: 100 },
-    flower: { name: "Peony", id: 268, buyPrice: 100 },
-  },
-  {
-    destination: "UAE", flag: "🇦🇪", flightTime: 242, nurseFee: 10,
-    items: [
-      { name: "Gold Plated AK-47", id: 385, buyPrice: 5000, category: "standard" },
-      { name: "Camel", id: 386, buyPrice: 3250, category: "standard" },
-    ],
-    plushie: { name: "Camel Plushie", id: 618, buyPrice: 100 },
-    flower: { name: "Tribulus Omanense", id: 269, buyPrice: 100 },
-  },
-  {
-    destination: "South Africa", flag: "🇿🇦", flightTime: 267, nurseFee: 10,
-    items: [
-      { name: "Diamond", id: 387, buyPrice: 10000, category: "standard" },
-      { name: "Krugerrand", id: 388, buyPrice: 5000, category: "standard" },
-    ],
-    plushie: { name: "Lion Plushie", id: 280, buyPrice: 100 },
-    flower: { name: "African Violet", id: 270, buyPrice: 100 },
-  },
+// ─── TRAVEL DATA (YATA-DRIVEN) ──────────────────────────────────────────────
+// Destinations with flight times only — actual items come from YATA API
+const TRAVEL_DESTINATIONS = [
+  { destination: "Mexico", flag: "🇲🇽", flightTime: 26, code: "mex" },
+  { destination: "Cayman Islands", flag: "🇰🇾", flightTime: 35, code: "cay" },
+  { destination: "Canada", flag: "🇨🇦", flightTime: 41, code: "can" },
+  { destination: "Hawaii", flag: "🇺🇸", flightTime: 134, code: "haw" },
+  { destination: "United Kingdom", flag: "🇬🇧", flightTime: 159, code: "uni" },
+  { destination: "Argentina", flag: "🇦🇷", flightTime: 167, code: "arg" },
+  { destination: "Switzerland", flag: "🇨🇭", flightTime: 175, code: "swi" },
+  { destination: "Japan", flag: "🇯🇵", flightTime: 225, code: "jap" },
+  { destination: "China", flag: "🇨🇳", flightTime: 242, code: "chi" },
+  { destination: "UAE", flag: "🇦🇪", flightTime: 242, code: "uae" },
+  { destination: "South Africa", flag: "🇿🇦", flightTime: 267, code: "sou" },
 ];
+
+// Known plushie/flower IDs for labeling (from YATA real data)
+const PLUSHIE_IDS = new Set([258, 618, 261, 266, 268, 269, 273, 274, 281, 384, 281]);
+const FLOWER_IDS = new Set([260, 617, 263, 264, 267, 271, 272, 276, 277, 282, 385]);
 
 // Travel time modifiers
 const TICKET_TYPES = [
@@ -741,61 +655,46 @@ const TICKET_TYPES = [
   { label: "WLT (Private)", modifier: 0.0, icon: "⚡" },
 ];
 
-// YATA country code mapping
-const YATA_COUNTRY_CODES = {
-  "Mexico": "mex", "Cayman Islands": "cay", "Canada": "can", "Hawaii": "haw",
-  "United Kingdom": "uni", "Argentina": "arg", "Switzerland": "swi",
-  "Japan": "jap", "China": "chi", "UAE": "uae", "South Africa": "sou",
-};
-
-// Calculate travel profits with real-time market data + foreign stock
-const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, droqsData) => {
-  if (!allItems) return TRAVEL_DATA.map(d => ({ ...d, profits: null, bestCombo: null, profitPerHour: 0 }));
-
+// Calculate travel profits — uses YATA stock as primary source for items + costs
+const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock) => {
   const { ticketIndex, carrySlots } = travelConfig;
   const ticketMod = TICKET_TYPES[ticketIndex]?.modifier ?? 1.0;
+  const hasYata = foreignStock && Object.keys(foreignStock).length > 0;
 
-  return TRAVEL_DATA.map(dest => {
-    // Get YATA stock for this destination
-    const yataCode = YATA_COUNTRY_CODES[dest.destination];
-    const yataStock = foreignStock?.[yataCode]?.stocks || [];
-    const yataUpdate = foreignStock?.[yataCode]?.update || null;
+  return TRAVEL_DESTINATIONS.map(dest => {
+    const yataStock = foreignStock?.[dest.code]?.stocks || [];
+    const yataUpdate = foreignStock?.[dest.code]?.update || null;
 
-    // Get market values for all items in this destination
-    const allDestItems = [
-      ...dest.items.map(it => ({ ...it, type: "item" })),
-      { ...dest.plushie, type: "plushie" },
-      { ...dest.flower, type: "flower" },
-    ].map(it => {
-      const marketItem = allItems[it.id];
-      // Use real price (from market scan) if available, otherwise market_value
-      const real = realPrices?.[it.id];
+    // Build item list from YATA stock data (real items + real abroad costs)
+    const allDestItems = yataStock.map(stockItem => {
+      const marketItem = allItems?.[stockItem.id];
+      const real = realPrices?.[stockItem.id];
       const sellPrice = real?.cheapest || marketItem?.market_value || 0;
       const priceSource = real?.cheapest ? "market" : "estimate";
       const avgBazaar = real?.avgBazaar || sellPrice;
       const marketListings = real?.totalListings || 0;
-
-      // Get foreign stock info from YATA
-      const stockInfo = yataStock.find(s => s.id === it.id);
-      const abroadStock = stockInfo?.quantity ?? null; // null = unknown
-      const abroadCost = stockInfo?.cost ?? it.buyPrice;
-
+      const abroadCost = stockItem.cost;
+      const abroadStock = stockItem.quantity;
       const profit = sellPrice - abroadCost;
+      const itemName = marketItem?.name || stockItem.name;
+      const type = PLUSHIE_IDS.has(stockItem.id) ? "plushie"
+        : FLOWER_IDS.has(stockItem.id) ? "flower" : "item";
+
       return {
-        ...it, sellPrice, profit, marketName: marketItem?.name || it.name,
-        priceSource, avgBazaar, marketListings,
+        id: stockItem.id, name: stockItem.name, marketName: itemName,
+        type, sellPrice, profit, priceSource, avgBazaar, marketListings,
         abroadStock, abroadCost, yataUpdate,
       };
     }).sort((a, b) => b.profit - a.profit);
 
     // Best combo: fill carry slots allowing multiples, respecting stock limits
-    const inStockItems = allDestItems.filter(it => it.abroadStock === null || it.abroadStock > 0);
+    const inStockItems = allDestItems.filter(it => it.abroadStock > 0 && it.profit > 0);
     const bestCombo = [];
-    const stockUsed = {}; // track how many of each item we're "buying"
+    const stockUsed = {};
     let slotsLeft = carrySlots;
     for (const it of inStockItems) {
       if (slotsLeft <= 0) break;
-      const available = it.abroadStock === null ? slotsLeft : Math.max(0, it.abroadStock - (stockUsed[it.id] || 0));
+      const available = Math.max(0, it.abroadStock - (stockUsed[it.id] || 0));
       const toBuy = Math.min(slotsLeft, available);
       if (toBuy <= 0) continue;
       for (let n = 0; n < toBuy; n++) bestCombo.push(it);
@@ -806,35 +705,22 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, dro
     const totalRevenue = bestCombo.reduce((s, it) => s + it.sellPrice, 0);
     const totalProfit = totalRevenue - totalInvestment;
 
-    // Round trip time in minutes
+    // Round trip time
     const roundTripMin = Math.ceil(dest.flightTime * 2 * ticketMod);
     const roundTripHours = roundTripMin / 60;
     const profitPerHour = roundTripHours > 0 ? Math.round(totalProfit / roundTripHours) : 0;
     const profitPerMin = roundTripMin > 0 ? Math.round(totalProfit / roundTripMin) : 0;
-
-    // Daily potential (assuming active play, ~16h/day)
     const tripsPerDay = roundTripMin > 0 ? Math.floor((16 * 60) / roundTripMin) : 0;
     const dailyProfit = tripsPerDay * totalProfit;
 
-    // Stock status summary
     const outOfStockCount = allDestItems.filter(it => it.abroadStock === 0).length;
-    const hasStockData = allDestItems.some(it => it.abroadStock !== null);
+    const hasStockData = hasYata && allDestItems.length > 0;
 
     return {
-      ...dest,
-      allDestItems,
-      bestCombo,
-      totalInvestment,
-      totalRevenue,
-      totalProfit,
-      roundTripMin,
-      profitPerHour,
-      profitPerMin,
-      tripsPerDay,
-      dailyProfit,
-      outOfStockCount,
-      hasStockData,
-      yataUpdate,
+      ...dest, allDestItems, bestCombo,
+      totalInvestment, totalRevenue, totalProfit,
+      roundTripMin, profitPerHour, profitPerMin,
+      tripsPerDay, dailyProfit, outOfStockCount, hasStockData, yataUpdate,
     };
   }).sort((a, b) => b.profitPerHour - a.profitPerHour);
 };
@@ -1536,13 +1422,15 @@ export default function TornGrowthOptimizer() {
     if (!apiKey) return;
     setTravelPriceLoading(true);
     try {
-      // Collect all unique item IDs from travel data
+      // Collect all unique item IDs from YATA foreign stock data
       const itemIds = [];
-      TRAVEL_DATA.forEach(d => {
-        d.items.forEach(it => itemIds.push(it.id));
-        itemIds.push(d.plushie.id, d.flower.id);
-      });
+      if (travelForeignStock) {
+        Object.values(travelForeignStock).forEach(country => {
+          (country.stocks || []).forEach(s => itemIds.push(s.id));
+        });
+      }
       const uniqueIds = [...new Set(itemIds)];
+      if (uniqueIds.length === 0) return; // No YATA data yet, skip
 
       const prices = { ...travelRealPrices };
       // Fetch in batches of 3 to avoid rate limiting
@@ -1575,7 +1463,7 @@ export default function TornGrowthOptimizer() {
       setTravelLastPriceUpdate(Date.now());
     } catch (e) { console.error("Travel price fetch error:", e); }
     setTravelPriceLoading(false);
-  }, [apiKey, travelRealPrices]);
+  }, [apiKey, travelRealPrices, travelForeignStock]);
 
   // ─── TRAVEL: Fetch foreign stock from YATA ────────────────────────────
   const fetchForeignStock = useCallback(async () => {
@@ -1612,13 +1500,19 @@ export default function TornGrowthOptimizer() {
   // Auto-refresh travel stock (every 2 min) + real prices (every 5 min)
   useEffect(() => {
     if (!apiKey) return;
-    // Initial fetch on load
+    // Load stock first, then prices (prices need YATA item IDs)
     fetchForeignStock();
-    fetchTravelRealPrices();
     const stockInterval = setInterval(fetchForeignStock, 2 * 60 * 1000);
     const priceInterval = setInterval(fetchTravelRealPrices, 5 * 60 * 1000);
     return () => { clearInterval(stockInterval); clearInterval(priceInterval); };
   }, [apiKey]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch real prices once YATA stock is available
+  useEffect(() => {
+    if (travelForeignStock && Object.keys(travelForeignStock).length > 0 && !travelLastPriceUpdate) {
+      fetchTravelRealPrices();
+    }
+  }, [travelForeignStock]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Request notification permission
   useEffect(() => {
@@ -2615,7 +2509,7 @@ export default function TornGrowthOptimizer() {
         {/* ═══ TRAVEL TAB (ULTRA-OPTIMIZED) ═══ */}
         {tab === "travel" && (() => {
           const travelConfig = { ticketIndex: travelTicket, carrySlots: travelSlots };
-          const travelResults = calcTravelProfits(allItems, travelConfig, travelRealPrices, travelForeignStock, travelDroqsData);
+          const travelResults = calcTravelProfits(allItems, travelConfig, travelRealPrices, travelForeignStock);
           const bestRoute = travelResults[0];
           const ticketInfo = TICKET_TYPES[travelTicket] || TICKET_TYPES[0];
 
@@ -2680,6 +2574,17 @@ export default function TornGrowthOptimizer() {
                 <div style={{ fontSize: 18, fontWeight: 700, color: T.purple }}>En vuelo a {travelDest}</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: T.text, margin: "8px 0" }}>{timeUntil(travelTime)}</div>
                 <div style={{ fontSize: 11, color: T.textDim }}>Recuerda comprar los items más rentables al llegar</div>
+              </div>
+            )}
+
+            {/* ── No YATA data warning ── */}
+            {(!travelForeignStock || Object.keys(travelForeignStock).length === 0) && !travelStockLoading && (
+              <div style={{ background: T.card, border: `1px solid ${T.gold}44`, borderRadius: 12, padding: 16, marginBottom: 16, textAlign: "center" }}>
+                <div style={{ fontSize: 13, color: T.gold, fontWeight: 600, marginBottom: 4 }}>Cargando datos de stock...</div>
+                <div style={{ fontSize: 11, color: T.textDim }}>
+                  Pulsa "Actualizar Stock Extranjero" para cargar items reales de YATA + DroqsDB.
+                  Sin estos datos no se pueden calcular rutas.
+                </div>
               </div>
             )}
 
@@ -2961,26 +2866,34 @@ export default function TornGrowthOptimizer() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                 <div style={{ background: T.bg, borderRadius: 8, padding: 12 }}>
                   <div style={{ fontSize: 11, color: T.purple, fontWeight: 600, marginBottom: 8 }}>🧸 Plushies por Destino</div>
-                  {TRAVEL_DATA.map(d => {
-                    const mv = allItems?.[d.plushie.id]?.market_value ?? 0;
-                    return (
-                      <div key={d.destination} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 10 }}>
-                        <span style={{ color: T.textDim }}>{d.flag} {d.plushie.name}</span>
-                        <span style={{ color: mv > 0 ? T.green : T.textMuted }}>${fmt(mv)}</span>
+                  {travelResults.map(d => {
+                    const plushies = d.allDestItems.filter(it => it.type === "plushie");
+                    if (plushies.length === 0) return null;
+                    return plushies.map(p => (
+                      <div key={`${d.destination}-${p.id}`} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 10 }}>
+                        <span style={{ color: T.textDim }}>{d.flag} {p.marketName}</span>
+                        <span style={{ display: "flex", gap: 8 }}>
+                          {p.abroadStock !== undefined && <span style={{ color: p.abroadStock > 0 ? T.green : T.red }}>{p.abroadStock > 0 ? p.abroadStock : "0"}</span>}
+                          <span style={{ color: p.sellPrice > 0 ? T.green : T.textMuted }}>${fmt(p.sellPrice)}</span>
+                        </span>
                       </div>
-                    );
+                    ));
                   })}
                 </div>
                 <div style={{ background: T.bg, borderRadius: 8, padding: 12 }}>
                   <div style={{ fontSize: 11, color: T.purple, fontWeight: 600, marginBottom: 8 }}>🌸 Flowers por Destino</div>
-                  {TRAVEL_DATA.map(d => {
-                    const mv = allItems?.[d.flower.id]?.market_value ?? 0;
-                    return (
-                      <div key={d.destination} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 10 }}>
-                        <span style={{ color: T.textDim }}>{d.flag} {d.flower.name}</span>
-                        <span style={{ color: mv > 0 ? T.green : T.textMuted }}>${fmt(mv)}</span>
+                  {travelResults.map(d => {
+                    const flowers = d.allDestItems.filter(it => it.type === "flower");
+                    if (flowers.length === 0) return null;
+                    return flowers.map(f => (
+                      <div key={`${d.destination}-${f.id}`} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 10 }}>
+                        <span style={{ color: T.textDim }}>{d.flag} {f.marketName}</span>
+                        <span style={{ display: "flex", gap: 8 }}>
+                          {f.abroadStock !== undefined && <span style={{ color: f.abroadStock > 0 ? T.green : T.red }}>{f.abroadStock > 0 ? f.abroadStock : "0"}</span>}
+                          <span style={{ color: f.sellPrice > 0 ? T.green : T.textMuted }}>${fmt(f.sellPrice)}</span>
+                        </span>
                       </div>
-                    );
+                    ));
                   })}
                 </div>
               </div>
