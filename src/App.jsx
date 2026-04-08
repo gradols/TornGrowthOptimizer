@@ -1506,8 +1506,8 @@ export default function TornGrowthOptimizer() {
     try {
       // Fetch DroqsDB export + restocking-soon in parallel (external APIs, no Torn rate limit)
       const [droqsExportRes, droqsRestockRes, yataRes] = await Promise.all([
-        fetch("https://droqsdb.com/api/public/v1/export").catch(() => null),
-        fetch("https://droqsdb.com/api/public/v1/restocking-soon").catch(() => null),
+        fetch("/droqsdb/api/public/v1/export").catch(() => null),
+        fetch("/droqsdb/api/public/v1/restocking-soon").catch(() => null),
         fetch("https://yata.yt/api/v1/travel/export/").catch(() => null),
       ]);
       if (droqsExportRes?.ok) {
@@ -1544,7 +1544,7 @@ export default function TornGrowthOptimizer() {
   // Refresh restock timers from DroqsDB (fast, small endpoint, every 60s)
   const refreshRestockTimers = useCallback(async () => {
     try {
-      const res = await fetch("https://droqsdb.com/api/public/v1/restocking-soon");
+      const res = await fetch("/droqsdb/api/public/v1/restocking-soon");
       if (!res.ok) return;
       const json = await res.json();
       const lookup = {};
