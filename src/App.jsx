@@ -2713,7 +2713,7 @@ export default function TornGrowthOptimizer() {
                 <span style={{ color: T.textMuted }}>Stock: </span>
                 <span style={{ color: travelLastStockUpdate ? T.green : T.textMuted }}>
                   {travelLastStockUpdate
-                    ? `YATA + DroqsDB — ${new Date(travelLastStockUpdate).toLocaleTimeString()}`
+                    ? `YATA + DroqsDB — ${new Date(travelLastStockUpdate).toLocaleTimeString()} (${Object.keys(travelRestockData).length} restocks)`
                     : "Sin datos (pulsa actualizar)"
                   }
                 </span>
