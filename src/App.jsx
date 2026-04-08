@@ -2807,7 +2807,7 @@ export default function TornGrowthOptimizer() {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
               {[
                 { label: "Viajes Hoy", value: travelTripsToday, color: T.accent, icon: "✈️" },
-                { label: "Ganancia Hoy", value: `$${fmt(travelEarningsToday)}`, color: T.green, icon: "💰" },
+                { label: "Items", value: `${travelSlots} slots`, color: T.green, icon: "🧳" },
                 { label: "Ticket Actual", value: ticketInfo.label, color: T.purple, icon: ticketInfo.icon },
               ].map(s => (
                 <div key={s.label} style={{ background: T.card, border: `1px solid ${T.border}`, borderRadius: 10, padding: 12, textAlign: "center" }}>
@@ -2878,10 +2878,6 @@ export default function TornGrowthOptimizer() {
                       const v = parseInt(e.target.value, 10);
                       setTravelTicket(v);
                       localStorage.setItem("torn_travel_ticket", v);
-                      // Auto-set capacity based on ticket type
-                      const cap = TICKET_TYPES[v]?.capacity || 5;
-                      setTravelSlots(cap);
-                      localStorage.setItem("torn_travel_slots", cap);
                     }}
                     style={{
                       width: "100%", padding: "8px 10px", background: T.bg, border: `1px solid ${T.border}`,
@@ -2896,7 +2892,7 @@ export default function TornGrowthOptimizer() {
                 <div>
                   <div style={{ fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Slots de Carga</div>
                   <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                    {[3, 4, 5, 6, 7, 8, 10].map(n => (
+                    {[5, 9, 15, 17, 19, 25, 29, 34].map(n => (
                       <button
                         key={n}
                         onClick={() => {
