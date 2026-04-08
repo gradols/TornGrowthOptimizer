@@ -1514,44 +1514,6 @@ export default function TornGrowthOptimizer() {
     }
   }, [travelForeignStock]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Landing alert: 6 alerts every 10s when < 60s remaining
-  const landingAlertedRef = useRef(new Set());
-  const travelTimeLocalRef = useRef(0);
-  useEffect(() => {
-    // Sync with API data whenever it updates
-    travelTimeLocalRef.current = travelTime;
-    if (!traveling) {
-      landingAlertedRef.current.clear();
-      travelTimeLocalRef.current = 0;
-    }
-  }, [travelTime, traveling]);
-
-  useEffect(() => {
-    if (!traveling || typeof Notification === "undefined") return;
-    const interval = setInterval(() => {
-      travelTimeLocalRef.current = Math.max(0, travelTimeLocalRef.current - 1);
-      const t = travelTimeLocalRef.current;
-      // Alert at 60, 50, 40, 30, 20, 10 seconds
-      const alertTimes = [60, 50, 40, 30, 20, 10];
-      for (const at of alertTimes) {
-        if (t <= at && t > at - 1 && !landingAlertedRef.current.has(at)) {
-          landingAlertedRef.current.add(at);
-          playAlert();
-          if (Notification.permission === "granted") {
-            new Notification(`✈️ ¡Aterrizando en ${at}s!`, {
-              body: `Llegas a ${travelDest} en ${at} segundos — prepárate para comprar`,
-              tag: `torn-landing-${at}`,
-            });
-          }
-        }
-      }
-      if (t <= 0) {
-        clearInterval(interval);
-      }
-    }, 1000);
-    return () => clearInterval(interval);
-  }, [traveling, travelDest]);
-
   // Request notification permission
   useEffect(() => {
     if (apiKey && typeof Notification !== "undefined" && Notification.permission === "default") {
@@ -1688,6 +1650,40 @@ export default function TornGrowthOptimizer() {
   const traveling = data?.travel?.destination !== "" && data?.travel?.time_left > 0;
   const travelDest = data?.travel?.destination || "";
   const travelTime = data?.travel?.time_left ?? 0;
+
+  // Landing alert: 6 alerts every 10s when < 60s remaining
+  const landingAlertedRef = useRef(new Set());
+  const travelTimeLocalRef = useRef(0);
+  useEffect(() => {
+    travelTimeLocalRef.current = travelTime;
+    if (!traveling) {
+      landingAlertedRef.current.clear();
+      travelTimeLocalRef.current = 0;
+    }
+  }, [travelTime, traveling]);
+
+  useEffect(() => {
+    if (!traveling || typeof Notification === "undefined") return;
+    const interval = setInterval(() => {
+      travelTimeLocalRef.current = Math.max(0, travelTimeLocalRef.current - 1);
+      const t = travelTimeLocalRef.current;
+      const alertTimes = [60, 50, 40, 30, 20, 10];
+      for (const at of alertTimes) {
+        if (t <= at && t > at - 1 && !landingAlertedRef.current.has(at)) {
+          landingAlertedRef.current.add(at);
+          playAlert();
+          if (Notification.permission === "granted") {
+            new Notification(`✈️ ¡Aterrizando en ${at}s!`, {
+              body: `Llegas a ${travelDest} en ${at} segundos — prepárate para comprar`,
+              tag: `torn-landing-${at}`,
+            });
+          }
+        }
+      }
+      if (t <= 0) clearInterval(interval);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [traveling, travelDest]);
 
   const recommendedCrime = selectedCrime != null
     ? CRIME_GUIDE.find(c => c.nerve === selectedCrime) || CRIME_GUIDE[0]
