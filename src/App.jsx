@@ -677,40 +677,47 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, dro
     // Build item list from YATA stock data + DroqsDB restock info
     const oneWayMinForPrediction = Math.max(1, Math.ceil(dest.flightTime * ticketMod));
     const droqsCountry = droqsLookup[dest.destination] || {};
-    const allDestItems = yataStock.map(stockItem => {
-      const marketItem = allItems?.[stockItem.id];
-      const real = realPrices?.[stockItem.id];
-      const droqsItem = droqsCountry[stockItem.id];
-      // Use real scan price > DroqsDB bazaar price > market_value
+    const yataIds = new Set(yataStock.map(s => s.id));
+    const buildItem = (id, name, cost, quantity, droqsItem) => {
+      const marketItem = allItems?.[id];
+      const real = realPrices?.[id];
       const sellPrice = real?.cheapest || droqsItem?.bazaarPrice || marketItem?.market_value || 0;
       const priceSource = real?.cheapest ? "market" : droqsItem?.bazaarPrice ? "droqsdb" : sellPrice > 0 ? "estimate" : "no_data";
       const avgBazaar = real?.avgBazaar || droqsItem?.bazaarPrice || sellPrice;
       const marketListings = real?.totalListings || 0;
-      const abroadCost = droqsItem?.buyPrice || stockItem.cost;
-      // Use DroqsDB stock if it says 0 (more recent than YATA for sellouts)
-      const abroadStock = (droqsItem && droqsItem.stock === 0) ? 0 : stockItem.quantity;
-      // Subtract Item Market commission (5%)
+      const abroadCost = droqsItem?.buyPrice || cost;
+      const abroadStock = (droqsItem && droqsItem.stock === 0) ? 0 : quantity;
       const sellAfterFee = Math.round(sellPrice * 0.95);
       const profit = sellAfterFee - abroadCost;
-      const itemName = marketItem?.name || stockItem.name;
-      // DroqsDB restock data — check export first, then restocking-soon as fallback
-      const restockSoonItem = restockData?.[`${dest.destination}_${stockItem.id}`];
+      const itemName = marketItem?.name || name;
+      const restockSoonItem = restockData?.[`${dest.destination}_${id}`];
       const rawRestock = droqsItem?.estimatedRestockMinutes ?? restockSoonItem?.estimatedRestockMinutes ?? null;
       const restockMin = (rawRestock != null && rawRestock > 0) ? rawRestock : null;
       const droqsProfitPerMin = droqsItem?.profitPerMinute ?? null;
-      const type = PLUSHIE_IDS.has(stockItem.id) ? "plushie"
-        : FLOWER_IDS.has(stockItem.id) ? "flower" : "item";
-
-      // Will this item be in stock when I arrive? (smart prediction)
+      const type = PLUSHIE_IDS.has(id) ? "plushie"
+        : FLOWER_IDS.has(id) ? "flower" : "item";
       const willBeInStock = abroadStock > 0 ? true
         : restockMin !== null && restockMin <= oneWayMinForPrediction ? true : false;
-
       return {
-        id: stockItem.id, name: stockItem.name, marketName: itemName,
+        id, name, marketName: itemName,
         type, sellPrice, sellAfterFee, profit, priceSource, avgBazaar, marketListings,
         abroadStock, abroadCost, yataUpdate, restockMin, droqsProfitPerMin, willBeInStock,
       };
-    }).sort((a, b) => b.profit - a.profit);
+    };
+    // Build from YATA stock
+    const yataItems = yataStock.map(stockItem =>
+      buildItem(stockItem.id, stockItem.name, stockItem.cost, stockItem.quantity, droqsCountry[stockItem.id])
+    );
+    // Add DroqsDB-only items (not in YATA)
+    const droqsOnlyItems = Object.entries(droqsCountry)
+      .filter(([itemId]) => !yataIds.has(Number(itemId)) && !yataIds.has(String(itemId)))
+      .map(([itemId, droqsItem]) => {
+        const numId = Number(itemId);
+        const marketItem = allItems?.[numId];
+        const name = marketItem?.name || droqsItem?.name || `Item #${itemId}`;
+        return buildItem(numId, name, droqsItem.buyPrice || 0, droqsItem.stock || 0, droqsItem);
+      });
+    const allDestItems = [...yataItems, ...droqsOnlyItems].sort((a, b) => b.profit - a.profit);
 
     // Best combo: fill slots with profitable items (in stock OR will restock before arrival)
     const inStockItems = allDestItems.filter(it =>
@@ -722,7 +729,10 @@ const calcTravelProfits = (allItems, travelConfig, realPrices, foreignStock, dro
     let slotsLeft = carrySlots;
     for (const it of inStockItems) {
       if (slotsLeft <= 0) break;
-      const available = Math.max(0, it.abroadStock - (stockUsed[it.id] || 0));
+      const currentAvail = Math.max(0, it.abroadStock - (stockUsed[it.id] || 0));
+      // If item is out of stock but will restock before we arrive, assume enough stock
+      const available = currentAvail > 0 ? currentAvail
+        : (it.willBeInStock && it.abroadStock === 0) ? slotsLeft : 0;
       const toBuy = Math.min(slotsLeft, available);
       if (toBuy <= 0) continue;
       for (let n = 0; n < toBuy; n++) bestCombo.push(it);
@@ -2898,7 +2908,7 @@ export default function TornGrowthOptimizer() {
                 </div>
                 <div>
                   <div style={{ fontSize: 10, color: T.textMuted, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Slots de Carga</div>
-                  <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
                     {[5, 9, 15, 17, 19, 25, 29, 34].map(n => (
                       <button
                         key={n}
@@ -2915,6 +2925,22 @@ export default function TornGrowthOptimizer() {
                         }}
                       >{n}</button>
                     ))}
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={travelSlots}
+                      onChange={e => {
+                        const v = Math.max(1, Math.min(100, parseInt(e.target.value) || 1));
+                        setTravelSlots(v);
+                        localStorage.setItem("torn_travel_slots", v);
+                      }}
+                      style={{
+                        width: 52, padding: "5px 6px", textAlign: "center",
+                        background: T.bg, border: `1px solid ${T.border}`,
+                        borderRadius: 6, fontSize: 12, color: T.text, fontFamily: "inherit",
+                      }}
+                    />
                   </div>
                 </div>
               </div>
